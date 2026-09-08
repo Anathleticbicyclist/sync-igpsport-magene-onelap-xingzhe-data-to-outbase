@@ -42,6 +42,15 @@
 | **同步** | 开始/停止/测试下载、一键复制日志、清除同步记忆、后台自动同步开关 |
 | **关于** | 版本信息、更新日志、鸣谢、赞赏支持、俱乐部与仓库链接 |
 
+### 📱 界面预览
+
+<p align="center">
+  <img src="screenshots/01_login.png" alt="登录页" width="185">
+  <img src="screenshots/02_settings.png" alt="设置页" width="185">
+  <img src="screenshots/03_sync.png" alt="同步页" width="185">
+  <img src="screenshots/04_about.png" alt="关于页" width="185">
+</p>
+
 ---
 
 ## 🌐 支持平台
