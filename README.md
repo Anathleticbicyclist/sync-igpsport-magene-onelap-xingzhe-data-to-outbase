@@ -11,6 +11,10 @@
 
 让运动数据自由流动 🚴♂️
 
+> **正式版**：专注「多来源 → Outbase」单向链路，主打稳定，适合日常使用。
+>
+> **开发体验版**：支持平台间互传等更多新功能，目前正处于开放测试阶段，功能可能还不够稳定，还请大家多多担待。欢迎体验：[开发体验版](https://github.com/Anathleticbicyclist/sports-data-sync-multiplatform)
+
 ---
 
 ## ✨ 功能特性
@@ -60,8 +64,6 @@
 | 平台 | 说明 |
 |:----|:----|
 | **Outbase** | 所有来源数据统一上传至 Outbase |
-
-> 正式版专注「多来源 → Outbase」单向链路，主打稳定。想体验平台间互传等更多新功能，欢迎体验[开发体验版](https://github.com/Anathleticbicyclist/sports-data-sync-multiplatform)。
 
 ---
 
