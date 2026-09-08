@@ -1,5 +1,7 @@
 # 🚴 迈向Ob（正式版）
 
+<p align="center"><img src="logo.png" alt="迈向Ob" width="120"></p>
+
 **多平台运动数据 → Outbase 一键迁移工具**
 
 [![Android](https://img.shields.io/badge/Platform-Android-green)](https://developer.android.com)
