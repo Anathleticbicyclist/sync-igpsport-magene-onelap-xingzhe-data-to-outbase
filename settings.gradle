@@ -19,6 +19,3 @@ dependencyResolutionManagement {
 }
 rootProject.name = "JichiOB"
 include ':app'
- 
-
-build.gradle（根）

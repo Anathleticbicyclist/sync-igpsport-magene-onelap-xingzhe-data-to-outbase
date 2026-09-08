@@ -1,71 +1,100 @@
-# 🚴 鸡翅幸哲迈进OB
+# 🚴 迈向Ob（正式版）
 
-**iGPSPORT / 行者 / 迈金 → Outbase 运动数据同步工具**
+**多平台运动数据 → Outbase 一键迁移工具**
 
 [![Android](https://img.shields.io/badge/Platform-Android-green)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-blue)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v6.1.0-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-v8.1.0-brightgreen)]()
 
-一款 Android 数据迁移工具，将骑行/跑步等运动记录从三个国内平台批量同步到 Outbase 平台。
+一款 Android 运动数据迁移工具：**一次勾选多个数据源平台，统一批量上传到 Outbase**，解决骑行/跑步数据散落在多个平台、难以集中管理的痛点。
 
----
-
-## 🧪 开发体验版（欢迎体验）
-
-> 正式版主打**稳定**，仅覆盖「iGPSPORT / 行者 / 迈金 → Outbase」单向链路。
-> 想体验**六平台互传**等更多新功能？欢迎体验 **鸡翅幸哲迈进OB(开发体验版)**！
-
-| 对比项 | 正式版（本仓库） | 开发体验版 |
-|:------|:---------------|:----------|
-| 支持平台 | iGPSPORT / 行者 / 迈金 → Outbase | **六平台**：iGPSPORT / 行者 / 迈金 / 黑鸟单车 / 百锐腾 / Outbase |
-| 同步方向 | 单向同步到 Outbase | **平台间双向互传** |
-| 黑鸟单车 | 不支持 | ✅ 新增，支持下载 + 上传 |
-| 百锐腾 | 不支持 | ✅ 新增平台 |
-| 迈金 | 仅下载 | ✅ 下载（上传开发中） |
-| 最新版本 | v6.1.0 | **v6.4.3** |
-
-**开发体验版项目地址**：[GitHub - sports-data-sync-multiplatform（开发测试版）](https://github.com/Anathleticbicyclist/sports-data-sync-multiplatform)
-
-> 🧪 **欢迎大家体验开发版！** 开发版功能更全、迭代更快，但**不稳定且用且珍惜**，仅供尝鲜测试，正式使用请用本仓库的正式版。遇到问题欢迎提交 Issue 反馈。
+让运动数据自由流动 🚴♂️
 
 ---
 
 ## ✨ 功能特性
 
-### 支持平台
+### 核心功能（多对一 Outbase 上传）
 
-| 平台 | 登录方式 | 文件格式 | 说明 |
-|------|---------|---------|------|
-| **iGPSPORT** | WebView (Bearer Token) | FIT | 活动列表分页、原生FIT下载 |
-| **行者** | WebView (sessionid Cookie) | GPX→FIT | GPX下载、端内格式转换（含北京时间修正） |
-| **迈金/顽鹿OTM** | WebView (JWT) | FIT | 双通道下载（七牛直链+fit_content通用接口） |
-| **Outbase** | WebView (sessionId) | - | CDN上传、注册接口入库 |
+- 🎯 **多对一上传** — 一次勾选多个数据来源平台，统一上传到 Outbase，每条记录自动去重
+- ✅ **批量同步** — 支持 1~1000 条记录，可跳过前 N 条历史数据
+- 🔄 **后台自动同步** — WorkManager 调度，系统级保活，跨开机自动恢复，可配置检测间隔
+- 📋 **详细运行日志** — 全程记录，一键复制，失败原因分类
+- 💾 **同步记忆** — 已上传记录自动记忆，不重复上传；支持"忽略记忆，强制重传"
+- 📅 **仅同步指定日期之前** — 开启后只同步截止日期之前的历史数据，适合回溯旧记录
+- 📂 **文件本地存储** — 同步的 FIT/GPX 文件自动保存至手机 `Download/迈向Ob/` 目录
+- 🧭 **迈金 GCJ-02 坐标转换** — 迈金 fit_content 通道自动修正坐标偏移
+- ⏰ **开屏动画** — 1 秒清爽开屏，浅蓝渐变
 
-### 核心功能
+### 四页布局
 
-- 🔐 **四平台 WebView 登录** — 自动提取凭证，独立存储互不影响
-- 📥 **批量同步** — 支持1~1000条记录，可跳过前N条
-- 🔄 **GPX→FIT 转换** — 行者专用，本地WebView内完成，含UTC→北京时间修正
-- 📤 **多策略上传** — Outbase CDN h5端点 + WebView回退通道
-- 📋 **详细日志** — 全过程记录，一键复制，失败原因分类
-- 🎯 **单平台/全部来源选择** — 灵活控制同步范围
-- 🧭 **迈金 GCJ-02→WGS84 坐标转换** — 基于开源验证方案，fit_content通道自动修正坐标偏移
-- 💾 **数据来源记忆** — 重启APP自动恢复上次选择的来源
-- 📂 **文件本地存储** — 同步文件自动保存至手机 Download/鸡翅幸哲迈进OB/ 目录
-- 🔄 **同步记忆** — 已同步记录不再重复下载，跳过上限提升至10000条
-- ⏰ **后台自动同步** — 可配置检测间隔（30秒~1小时），附后台保活指引
+| 页面 | 说明 |
+|:----|:----|
+| **登录** | 各平台登录卡片，独立登录互不影响，支持注销 |
+| **设置** | 多选数据来源、同步数量、跳过前 N 条、仅同步指定日期之前、迈金坐标转换、忽略记忆开关 |
+| **同步** | 开始/停止/测试下载、一键复制日志、清除同步记忆、后台自动同步开关 |
+| **关于** | 版本信息、更新日志、鸣谢、赞赏支持、俱乐部与仓库链接 |
+
+---
+
+## 🌐 支持平台
+
+### 数据来源（可多选，下载数据）
+
+| 平台 | 登录方式 | 数据格式 |
+|:----|:--------|:--------|
+| **iGPSPORT** | WebView 登录 | FIT |
+| **行者** | WebView 登录 | GPX / FIT |
+| **迈金/顽鹿OTM** | WebView 登录 | FIT |
+| **黑鸟单车** | WebView 登录 | FIT |
+| **百锐腾** | WebView 登录 | FIT / GPX（开发中） |
+| **佳明国际** | WebView 登录 | FIT |
+| **佳明中国** | WebView 登录 | FIT |
+| **高驰中国** | WebView 登录 | FIT |
+| **高驰国际** | WebView 登录 | FIT |
+| **Wahoo** | OAuth2 登录 | FIT |
+
+### 同步目标（固定）
+
+| 平台 | 说明 |
+|:----|:----|
+| **Outbase** | 所有来源数据统一上传至 Outbase |
+
+> 正式版专注「多来源 → Outbase」单向链路，主打稳定。想体验平台间互传等更多新功能，欢迎体验[开发体验版](https://github.com/Anathleticbicyclist/sports-data-sync-multiplatform)。
+
+---
+
+## 🚀 快速开始
+
+1. **下载安装** — 从 [GitHub Releases](https://github.com/Anathleticbicyclist/sync-igpsport-magene-onelap-xingzhe-data-to-outbase/releases) 下载最新 APK 安装到 Android 设备
+2. **登录数据源** — 登录页点击各平台卡片完成登录（需账号的平台按平台登录方式操作）
+3. **登录 Outbase** — 登录页点击 Outbase 卡片完成登录
+4. **选择数据来源** — 设置页多选要同步的数据源（已登录才可选）
+5. **设置同步参数** — 调整同步数量、跳过前 N 条、坐标转换开关等
+6. **开始同步** — 同步页点击「开始同步」，统一上传到 Outbase
+7. **后台自动同步**（可选）— 开启自动同步并设置检测间隔，按指引完成后台保活设置
+
+---
+
+## ⚠️ 已知问题
+
+| 问题 | 影响范围 | 说明 | 状态 |
+|:----|:--------|:----|:----|
+| **佳明中国服务器慢** | 佳明中国作为来源 | 佳明中国服务器端响应慢，单条下载/上传约 30~60 秒属正常现象 | 服务器端限制，功能正常 |
+| **百锐腾下载开发中** | 百锐腾作为来源 | 百锐腾下载功能开发中，同步时会自动跳过 | 开发中 |
 
 ---
 
 ## 🛠️ 技术栈
 
 - **语言**: Kotlin 2.2.0
-- **最低SDK**: Android 8.0 (API 26)
-- **目标SDK**: Android 14 (API 36)
+- **最低 SDK**: Android 8.0 (API 26)
+- **目标 SDK**: Android 16 (API 36)
 - **构建工具**: Gradle 8.13 + AGP 8.13.0
 - **网络**: OkHttp 4.12
 - **协程**: Kotlinx Coroutines 1.7.3
+- **后台任务**: WorkManager
 - **UI**: Material Components
 
 ---
@@ -78,35 +107,34 @@ app/
 └── src/main/
     ├── AndroidManifest.xml
     ├── assets/
-    │   ├── bridge.html           # WebView桥页面（GPX转FIT+上传回退）
-    │   ├── gpx2fit.js            # Outbase官方GPX→FIT转换库
-    │   └── magene_fix.js         # 迈金GCJ-02→WGS84坐标修正（WebView内执行）
+    │   ├── bridge.html           # WebView 桥页面（GPX转FIT）
+    │   ├── gpx2fit.js            # Outbase官方 GPX→FIT 转换库
+    │   └── magene_fix.js         # 迈金 GCJ-02→WGS84 坐标修正
     ├── java/com/jichi/ob/
-    │   ├── MainActivity.kt       # 主界面+同步调度
-    │   ├── SyncEngine.kt         # 同步引擎核心逻辑
-    │   ├── AutoSyncService.kt    # 后台自动同步服务
-    │   ├── api/
-    │   │   ├── IgpsportApi.kt    # iGPSPORT接口
-    │   │   ├── XingzheApi.kt     # 行者接口
-    │   │   ├── MageneApi.kt      # 迈金OTM接口（含通道标识）
-    │   │   └── OutbaseApi.kt     # Outbase上传
-    │   ├── model/Activity.kt     # 数据模型
-    │   ├── ui/LoginWebActivity.kt# 四平台WebView登录
-    │   └── util/
-    │       ├── PrefsManager.kt   # 凭证存储+同步记忆
-    │       └── WebBridge.kt      # WebView桥管理
-    └── res/                      # 布局、配色、字符串、图标
+    │   ├── MainActivity.kt       # 主界面 + 多对一同步调度
+    │   ├── SplashActivity.kt     # 1秒开屏动画
+    │   ├── AutoSyncWorker.kt     # 后台自动同步（WorkManager）
+    │   ├── api/                  # 各平台接口（下载）+ Outbase上传
+    │   ├── ui/
+    │   │   ├── LoginFragment.kt        # 页面1 登录
+    │   │   ├── SyncSettingsFragment.kt # 页面2 设置
+    │   │   ├── SyncFragment.kt         # 页面3 同步
+    │   │   ├── AboutFragment.kt        # 页面4 关于
+    │   │   └── LoginWebActivity.kt     # WebView 登录
+    │   ├── model/Activity.kt     # 数据模型 + 平台能力声明
+    │   └── util/                 # 凭证存储、日志、文件保存
+    └── res/                      # 布局、配色、字符串、图标、赞赏码
 ```
 
 ---
 
-## 🚀 快速开始
+## 🔧 构建（开发者）
 
 ### 环境要求
 
-- **JDK 21**（完整JDK，含javac）
-- **Android SDK**: platforms;android-36 + build-tools;36.0.0
-- **Gradle 8.13**（项目自带gradle wrapper）
+- **JDK 17**（完整JDK，含javac）
+- **Android SDK**: platforms;android-36 + build-tools
+- **Gradle 8.13**（项目自带 gradle wrapper）
 
 ### 构建步骤
 
@@ -115,109 +143,80 @@ app/
 git clone https://github.com/Anathleticbicyclist/sync-igpsport-magene-onelap-xingzhe-data-to-outbase.git
 cd sync-igpsport-magene-onelap-xingzhe-data-to-outbase
 
-# 2. 生成签名密钥（首次需要）
-keytool -genkey -v -keystore jichi-ob-release.keystore \
-  -alias jichiob -keyalg RSA -keysize 2048 -validity 10000
+# 2. 配置签名密钥 local.properties（不提交到 git）
+# storeFile=../jichi-ob-dev.keystore
+# storePassword=你的密钥库口令
+# keyAlias=jichiobdev
+# keyPassword=你的密钥口令
 
-# 3. 修改 app/build.gradle 中的签名密码
-# storePassword '你的密码'
-# keyPassword '你的密码'
-
-# 4. 构建
+# 3. 构建
 ./gradlew assembleRelease
 
-# 5. 产物位置
+# 4. 产物位置
 # app/build/outputs/apk/release/app-release.apk
 ```
 
 ### 注意事项
 
-- ⚠️ 工程需放在**本地磁盘**编译，网络挂载文件系统（如OSS/FUSE）不支持Gradle校验服务
-- ⚠️ 首次构建需要下载依赖，建议配置阿里云镜像（已内置在settings.gradle）
-
----
-
-## 📖 使用说明
-
-1. **安装APK** 到 Android 设备
-2. **登录各平台** — 点击对应平台的登录按钮，在WebView中完成登录
-3. **设置同步数量** — 滑块选择1~1000条
-4. **选择来源** — 单平台或全部来源（选择会被记忆，下次自动恢复）
-5. **开始同步** — 点击"开始同步到Outbase"
-6. **查看日志** — 实时显示同步进度和结果
-7. **后台自动同步**（可选）— 在设置中开启，配置检测间隔，按指引设置后台保活
-
----
-
-## 🔧 核心机制
-
-### GPX→FIT 本地转换（行者专用）
-
-Outbase只接受FIT格式。行者GPX经打包进assets的Outbase官方`gpx2fit.js`在WebView内本地转换，不依赖网络。
-
-关键点：
-- `gpx2fitEncoder` 是异步函数（返回Promise），桥接代码必须 `Promise.resolve().then()` 处理
-- Android WebView自带DOMParser，该库浏览器分支可直接运行
-- GPX为UTC时间，转换前对所有`<time>`标签+8小时，使Outbase展示为北京时间
-
-### 迈金 GCJ-02→WGS84 坐标修正
-
-迈金fit_content接口返回的FIT文件使用GCJ-02坐标系（国测局坐标），与WGS84存在约450米偏移。修正方案基于开源项目 [magene-fit-strava-fix](https://github.com/dwmer0308-a11y/magene-fit-strava-fix) 的验证算法，打包在 `assets/magene_fix.js`，WebView内执行。
-
-- **七牛直链下载**：已是WGS84坐标，无需转换
-- **fit_content接口下载**：自动执行GCJ-02→WGS84转换
-- 转换开关在同步设置中，默认关闭
-
-### Outbase 上传（h5端点 + 回退）
-
-- **主通道**: OkHttp直连 `resource/h5/upload`，浏览器风格请求头，无需鉴权
-- **回退通道**: WebView内执行fetch，与官方网页请求环境完全一致
-
-### FIT下载双通道（迈金专用）
-
-- **通道①**: 七牛直链 — 老格式fileKey记录可用
-- **通道②**: `fit_content` 接口 — 官方网页端同款，全格式通用
-
----
-
-## 📊 平台接口说明
-
-### iGPSPORT
-- 活动列表: `GET /web-gateway/web-analyze/activity/queryMyActivity`
-- FIT下载: `GET /web-gateway/web-analyze/activity/getDownloadUrl/{rideId}`
-
-### 行者
-- 活动列表: `GET /pgworkout/?offset=N&limit=M`
-- GPX下载: `GET /pgworkout/{id}/gpx`
-
-### 迈金（顽鹿OTM）
-- 登录: `POST /api/login`（MD5密码）
-- 活动列表: `POST /api/otm/ride_record/list`
-- FIT下载: `GET /api/otm/ride_record/analysis/fit_content/{base64(fitUrl)}`
-
-### Outbase
-- CDN上传: `POST /zeusfit/resource/h5/upload`
-- 注册入库: JSON Body + Sessionid头
+- ⚠️ 工程需放在**本地磁盘**编译，网络挂载文件系统（如 OSS/FUSE）不支持 Gradle 校验服务
+- ⚠️ 首次构建需要下载依赖，已内置阿里云镜像（settings.gradle）
+- ⚠️ `local.properties` 与密钥库文件已加入 `.gitignore`，切勿提交到仓库
 
 ---
 
 ## 📋 更新日志
 
-### v6.1.0 (2026-08-18)
+### v8.1.0（2026-09-08）
 
-1. **数据来源记忆** — 重启APP自动恢复上次选择的数据来源
-2. **文件本地存储** — 同步文件自动保存至手机 `Download/鸡翅幸哲迈进OB/` 目录，设置卡片显示路径
-3. **迈金坐标转换** — 新增 GCJ-02→WGS84 坐标转换开关（基于 [magene-fit-strava-fix](https://github.com/dwmer0308-a11y/magene-fit-strava-fix) 开源验证方案移植），七牛直链不动、fit_content通道自动转换
-4. **同步记忆** — 已同步记录本地记账，再同步直接跳过不重复下载；跳过上限 3000→10000
-5. **后台自动同步** — 新增自动同步卡片（开关+检测间隔滑块30秒~1小时+后台常驻指引），含电池优化白名单申请、各品牌自启动设置路径，运行时通知栏常驻通知显示最近检测结果
+**已解决**
+- UI 全面优化：清新淡蓝主色（#2E96FF）、扁平化风格、大圆角卡片与细腻阴影
+- 登录页改为单列卡片：平台图标 + 状态徽标 + 点击卡片即可登录，移除百锐腾入口
+- 设置页改为三段式卡片布局：数据来源（2 列网格）/ 同步目标 / 同步参数；来源平台全名区分（佳明/高驰 中国·国际）
+- 运行日志重构为状态时间线：时间戳灰色 + 成功/失败/跳过按状态彩色分级
+- 关于页排版美化：版本徽标、链接卡片、鸣谢卡片
+- 更换全新应用图标（蓝底自行车 + 六色彩环，去白边）
+- 百锐腾在界面与文档中标注「开发中」，避免误导
+- 新增「仅同步指定日期之前」：开启后只同步截止日期之前的数据，可用于回溯历史数据（手动与自动同步均生效）
+- 存储目录优化为「下载/迈向Ob」，旧版本已下载数据自动迁移、不丢失
+- 后台自动同步更可靠：执行、完成、跳过、失败均有通知提醒，不再静默无感知
+
+**未解决**
+- 佳明中国服务器端响应慢（见已知问题）
+- 百锐腾下载开发中
+
+### v8.0.0（2026-09-08）
+
+**已解决**
+- 全新重构：从开发版移植四页布局（登录/设置/同步/关于）与 1 秒开屏动画
+- 支持多对一 Outbase 上传：一次勾选多个数据源，统一上传到 Outbase
+- 数据来源扩展至 10 个平台（新增黑鸟单车、佳明国际/中国、高驰中国/国际、Wahoo）
+- 后台自动同步升级为 WorkManager 调度（跨开机恢复、系统级保活）
+
+**未解决**
+- 佳明中国服务器端响应慢（见已知问题）
+- 百锐腾下载开发中
+
+### v6.1.0（2026-08-18）
+
+- 数据来源记忆 — 重启 APP 自动恢复上次选择的数据来源
+- 文件本地存储 — 同步文件保存至手机 `Download/迈向Ob/` 目录
+- 迈金 GCJ-02→WGS84 坐标转换开关
+- 同步记忆 — 已同步记录本地记账，跳过上限提升至 10000
+- 后台自动同步 — 开关 + 检测间隔 + 后台常驻指引
 
 ### v6.0.9
 
 - 初始开源版本
-- 四平台WebView登录+批量同步
-- GPX→FIT本地转换（行者专用）
-- 迈金双通道下载（七牛直链+fit_content）
-- Outbase多策略上传（CDN h5 + WebView回退）
+- 多平台 WebView 登录 + 批量同步到 Outbase
+- GPX→FIT 本地转换（行者专用）
+- 迈金双通道下载（七牛直链 + fit_content）
+- Outbase 多策略上传（CDN h5 + WebView 回退）
+
+---
+
+## 📄 数据版权声明
+
+各平台数据版权归原平台和该数据产生用户共同所有，本工具仅用于用户个人数据的迁移与备份，不得用于商业用途或数据爬取。
 
 ---
 
@@ -231,21 +230,26 @@ Outbase只接受FIT格式。行者GPX经打包进assets的Outbase官方`gpx2fit.
 
 感谢以下平台为热爱运动的用户提供的数据记录与存储服务：
 
-- **[iGPSPORT](https://www.igpsport.com/)** — 专业骑行数据平台
-- **[行者](https://www.imxingzhe.com/)** — 运动记录与社区平台
-- **[迈金/顽鹿OTM](https://www.magene.com/)** — 智能骑行设备与数据平台
-- **[Outbase](https://outbase.cn/)** — 运动数据聚合平台
+- iGPSPORT 迹驰 — 专业骑行码表与运动数据平台 [www.igpsport.com](https://www.igpsport.com/)
+- 行者 — 运动记录与骑行社区平台 [www.imxingzhe.com](https://www.imxingzhe.com/)
+- 迈金/顽鹿 — 智能骑行设备与数据平台 [www.magene.com](https://www.magene.com/)
+- 黑鸟单车 — 骑行运动记录平台 [www.blackbird.com.cn](http://www.blackbird.com.cn/)
+- 百锐腾 — 骑行码表与运动数据平台 [www.brytonsport.com](https://www.brytonsport.com/)
+- 佳明 — 智能运动手表与生态平台 [www.garmin.com](https://www.garmin.com/)
+- 高驰 — 户外运动手表与数据平台 [www.coros.com](https://www.coros.com/)
+- Wahoo — 智能骑行设备与训练平台 [www.wahoofitness.com](https://www.wahoofitness.com/)
+- Outbase — 运动数据聚合平台 [outbase.cn](https://outbase.cn/)
 
-感谢以下骑友(均为骑行爱称)为软件测试提供的帮助：素甲粉、青岛AUV阿哲、清茶、萧、洪斌大哥、鸽子王腰果、rockozhao、胶州一哥大沽河河长赵铁柱、海参
+感谢以下人员（均为骑行爱称）为软件测试提供的帮助：素甲粉、青岛AUV阿哲、清茶、萧、洪斌大哥、鸽子王腰果、rockozhao、胶州一哥大沽河河长赵铁柱、海参、兰兰大王、。。、初夏飞雪bab、心急吃不了热豆付、青山依旧张指导、阿泽阿
 
-感谢开源项目 [magene-fit-strava-fix](https://github.com/dwmer0308-a11y/magene-fit-strava-fix) 提供的迈金坐标修正算法参考。
+鸣谢青岛AUV俱乐部
+
+感谢开源项目 [garth](https://github.com/matinaslight/garth)、[magene-fit-strava-fix](https://github.com/dwmer0308-a11y/magene-fit-strava-fix) 提供的佳明登录与迈金坐标修正算法参考。
 
 ---
 
-## 📞 联系方式
+## 📞 联系我们
 
-如有问题或建议，欢迎提交 Issue。
+如有问题或建议，欢迎加入 [Outbase 俱乐部](https://outbase.cn/zeusfit/zeusfit-mk/sharePage.html?_bid=1005477&type=club&clubId=MTAxMjgz&timestamp=1787569599904&sign=b4604ad9041551e64ce90ea385a0029f) 与主理人反馈。
 
----
-
-**鸡翅幸哲迈进OB** — 让运动数据自由流动 🚴♂️
+**迈向Ob** — 让运动数据自由流动 🚴♂️

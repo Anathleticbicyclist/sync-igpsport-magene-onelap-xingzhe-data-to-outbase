@@ -27,6 +27,9 @@ class MageneApi {
  
     /** 迈金云端无此记录的FIT文件（2025-10后新记录未上传七牛） */
     class NoFileException(msg: String) : Exception(msg)
+
+    /** 迈金FIT下载结果: fromFitContent=true表示来自fit_content接口(GCJ-02需转换), false表示来自七牛云直链(WGS84无需转换) */
+    data class MageneFitResult(val data: ByteArray, val fromFitContent: Boolean)
  
     companion object {
         private const val TAG = "MageneApi"
@@ -116,6 +119,75 @@ class MageneApi {
      * @param skip 跳过前skip条
      * @param limit 需要的条数
      */
+    suspend fun getUsername(token: String): String? = withContext(Dispatchers.IO) {
+        // 1) 优先解析JWT payload（迈金登录token是JWT，内含用户信息）
+        try {
+            val parts = token.split(".")
+            if (parts.size >= 2) {
+                val payloadB64 = parts[1].replace('-', '+').replace('_', '/')
+                val padded = payloadB64 + "=".repeat((4 - payloadB64.length % 4) % 4)
+                val decoded = String(android.util.Base64.decode(padded, android.util.Base64.DEFAULT), Charsets.UTF_8)
+                val payload = JSONObject(decoded)
+                // v7.6.9: 校验JWT过期时间(exp, Unix秒) —— 迈金token是JWT但getUsername之前不校验exp，
+                // 导致token已过期仍显示"✅ 登录有效"，同步时才401。exp存在且已过期→判定失效，走刷新。
+                val exp = payload.optLong("exp", 0L)
+                if (exp > 0) {
+                    val nowSec = System.currentTimeMillis() / 1000
+                    if (nowSec >= exp) {
+                        Log.w(TAG, "getUsername: JWT已过期(exp=$exp, now=$nowSec)")
+                        return@withContext null
+                    }
+                }
+                val name = payload.optString("nickname")?.takeIf { it.isNotEmpty() }
+                    ?: payload.optString("userName")?.takeIf { it.isNotEmpty() }
+                    ?: payload.optString("name")?.takeIf { it.isNotEmpty() }
+                    ?: payload.optString("username")?.takeIf { it.isNotEmpty() }
+                    ?: payload.optString("account")?.takeIf { it.isNotEmpty() }
+                    ?: payload.optString("mobile")?.takeIf { it.isNotEmpty() }
+                    ?: "用户${payload.optString("uid").take(6)}"
+                return@withContext name
+            }
+        } catch (e: Exception) { Log.w(TAG, "JWT解析失败: ${e.message}") }
+        // 2) 非JWT 或 JWT解析异常 → 用列表接口校验（v7.6.8: 改用确定可用的列表接口而非user/info——
+        //    /api/otm/ride_record/list 与 getActivities 同款、验证可用，code==200 即 token 有效）
+        try {
+            val body = JSONObject().apply {
+                put("page", 1)
+                put("limit", 1)
+            }
+            val req = Request.Builder()
+                .url("$BASE/api/otm/ride_record/list")
+                .addHeader("Authorization", token)
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0")
+                .addHeader("Origin", BASE)
+                .addHeader("Referer", "$BASE/calendar")
+                .post(body.toString().toRequestBody(JSON))
+                .build()
+            val resp = client.newCall(req).execute()
+            val respBody = resp.body?.string() ?: ""
+            val json = try { JSONObject(respBody) } catch (e: Exception) { return@withContext null }
+            if (resp.code == 200 && json.optInt("code", -1) == 200) "迈金用户" else null
+        } catch (e2: Exception) { Log.w(TAG, "getUsername API: ${e2.message}"); null }
+    }
+
+    /**
+     * v7.6.9: JWT剩余有效期（秒）。<0表示已过期；null表示无法解析（视为无exp信息）
+     */
+    fun getJwtExpRemainingSec(token: String): Long? {
+        return try {
+            val parts = token.split(".")
+            if (parts.size < 2) return null
+            val payloadB64 = parts[1].replace('-', '+').replace('_', '/')
+            val padded = payloadB64 + "=".repeat((4 - payloadB64.length % 4) % 4)
+            val decoded = String(android.util.Base64.decode(padded, android.util.Base64.DEFAULT), Charsets.UTF_8)
+            val exp = JSONObject(decoded).optLong("exp", 0L)
+            if (exp <= 0) null else exp - System.currentTimeMillis() / 1000
+        } catch (e: Exception) {
+            Log.w(TAG, "getJwtExpRemainingSec: ${e.message}")
+            null
+        }
+    }
+
     suspend fun getActivities(token: String, skip: Int, limit: Int): List<ActivityRecord> =
         withContext(Dispatchers.IO) {
             val result = mutableListOf<ActivityRecord>()
@@ -188,7 +260,7 @@ class MageneApi {
      *   ① durl七牛直链（老格式记录可用）
      *   ② 回退 fit_content/{base64(fitUrl)}（官方网页端同款接口，新geo/格式记录必用）
      */
-    suspend fun downloadFit(token: String, recordId: String): ByteArray =
+    suspend fun downloadFit(token: String, recordId: String): MageneFitResult =
         withContext(Dispatchers.IO) {
             val req = Request.Builder()
                 .url("$BASE/api/otm/ride_record/analysis/$recordId")
@@ -217,8 +289,8 @@ class MageneApi {
                     if (dlResp.code == 200) {
                         val bytes = dlResp.body?.bytes()
                         if (bytes != null && isFit(bytes)) {
-                            Log.d(TAG, "FIT via durl: ${bytes.size} bytes (id=$recordId)")
-                            return@withContext bytes
+                            Log.d(TAG, "FIT via durl(七牛云WGS84): ${bytes.size} bytes (id=$recordId)")
+                            return@withContext MageneFitResult(bytes, false)
                         }
                     }
                     Log.d(TAG, "durl不可用(HTTP ${dlResp.code})，回退fit_content")
@@ -242,8 +314,8 @@ class MageneApi {
             if (fcResp.code != 200 || !isFit(fcBytes)) {
                 throw NoFileException("FIT获取失败(fit_content HTTP ${fcResp.code}, size=${fcBytes.size})")
             }
-            Log.d(TAG, "FIT via fit_content: ${fcBytes.size} bytes (id=$recordId)")
-            fcBytes
+            Log.d(TAG, "FIT via fit_content(GCJ-02): ${fcBytes.size} bytes (id=$recordId)")
+            MageneFitResult(fcBytes, true)
         }
  
     private fun isFit(bytes: ByteArray): Boolean =
@@ -251,4 +323,3 @@ class MageneApi {
 }
  
 
-OutbaseApi.kt — Outbase上传

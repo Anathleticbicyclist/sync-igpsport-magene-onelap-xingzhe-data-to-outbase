@@ -1,10 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">鸡翅幸哲迈进OB</string>
+    <string name="app_name">迈向Ob</string>
     <string name="not_logged_in">❌ 未登录</string>
-    <string name="thanks_platforms">鸣谢：感谢 iGPSPORT、迈金、行者、Outbase 为运动用户提供的数据记录与存储服务</string>
-    <string name="thanks_testers">感谢以下人员为软件测试提供的帮助：素甲粉、青岛AUV阿哲、清茶、萧、洪斌大哥、鸽子王腰果、rockozhao、胶州一哥大沽河河长赵铁柱、海参</string>
+    <string name="thanks_platforms">鸣谢：iGPSPORT、行者、迈金、黑鸟单车、百锐腾、Outbase</string>
+    <string name="thanks_testers">感谢：素甲粉、青岛AUV阿哲、清茶、萧、洪斌大哥、鸽子王腰果、rockozhao、胶州一哥大沽河河长赵铁柱、海参</string>
 </resources>
- 
-
-colors.xml

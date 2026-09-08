@@ -16,6 +16,19 @@ import java.util.concurrent.TimeUnit
  */
 class IgpsportApi {
  
+    /** v6.3.6: 探测iGPSPORT活动时间字段，支持多种字段名 */
+    private fun probeTimeField(item: org.json.JSONObject): String {
+        val keys = listOf("StartTime","startTime","start_time","RideDate","rideDate","ride_date",
+            "SportTime","sportTime","BeginTime","beginTime","RideTime","rideTime",
+            "createTime","CreateTime","start_date","startDate","Date","date","Time","time",
+            "StartTimeStr","startTimeStr","StartDate")
+        for (k in keys) {
+            val v = item.optString(k, "")
+            if (v.isNotEmpty()) return v
+        }
+        return ""
+    }
+
     companion object {
         private const val TAG = "IgpsportApi"
         const val LOGIN_URL = "https://login.passport.igpsport.cn/login?lang=zh-Hans"
@@ -40,6 +53,53 @@ class IgpsportApi {
         "Referer" to "https://app.igpsport.cn/"
     )
  
+    /**
+     * v7.6.0: 校验iGPSPORT token真实性并返回用户名
+     * 关键：user/info接口可能对有效token也返回403（不同网关服务），不能据此判失效。
+     * 用getActivities同款可靠接口queryMyActivity校验token；用户名从JWT payload解析。
+     * @return null 表示token确实失效（HTTP 401/403 或业务码非0）
+     */
+    suspend fun getUsername(token: String): String? = withContext(Dispatchers.IO) {
+        // 1) 用queryMyActivity真实校验token（该接口同步全链路已验证可靠）
+        val valid = try {
+            val url = "$ACTIVITY_URL?pageNo=1&pageSize=1&reqType=0&sort=1"
+            val req = Request.Builder().url(url)
+                .apply { authHeaders(token).forEach { (k, v) -> addHeader(k, v) } }
+                .get().build()
+            val resp = client.newCall(req).execute()
+            val body = resp.body?.string() ?: ""
+            if (resp.code == 401 || resp.code == 403) false
+            else if (resp.code != 200) {
+                Log.w(TAG, "getUsername queryMyActivity HTTP ${resp.code}")
+                false
+            } else {
+                val json = try { JSONObject(body) } catch (e: Exception) { null }
+                json?.optInt("code", -1) == 0
+            }
+        } catch (e: Exception) {
+            // 网络异常：保守判定有效（避免误判失效触发重新登录），同步时会自行报错引导
+            Log.e(TAG, "getUsername 校验网络异常，保守判定有效", e)
+            true
+        }
+        if (!valid) return@withContext null
+
+        // 2) token有效 → 从JWT payload解析用户名（不校验exp，仅取显示名）
+        try {
+            val parts = token.split(".")
+            if (parts.size >= 2) {
+                val payloadB64 = parts[1].replace('-', '+').replace('_', '/')
+                val padded = payloadB64 + "=".repeat((4 - payloadB64.length % 4) % 4)
+                val decoded = String(android.util.Base64.decode(padded, android.util.Base64.DEFAULT), Charsets.UTF_8)
+                val payload = JSONObject(decoded)
+                payload.optString("nickname")?.takeIf { it.isNotEmpty() }
+                    ?: payload.optString("userName")?.takeIf { it.isNotEmpty() }
+                    ?: payload.optString("name")?.takeIf { it.isNotEmpty() }
+                    ?: payload.optString("username")?.takeIf { it.isNotEmpty() }
+                    ?: payload.optString("account")?.takeIf { it.isNotEmpty() }
+                    ?: "用户${payload.optString("userId").take(6)}"
+            } else "用户"
+        } catch (e: Exception) { Log.e(TAG, "getUsername JWT解析失败", e); "用户" }
+    }
     suspend fun getActivities(token: String, offset: Int, limit: Int): List<ActivityRecord> =
         withContext(Dispatchers.IO) {
             val result = mutableListOf<ActivityRecord>()
@@ -73,6 +133,20 @@ class IgpsportApi {
                     if (fetched <= offset) continue
                     val item = rows.getJSONObject(i)
                     val rideId = item.optString("RideId", item.optString("rideId", item.optString("id", "")))
+                    // v6.3.6 调试：用Log.w输出第一个活动的所有字段和时间值，排查文件名时间unknown
+                    if (fetched == offset + 1) {
+                        val allKeys = item.names()?.let { arr -> (0 until arr.length()).map { arr.optString(it) }.joinToString(",") } ?: "(无)"
+                        val timeKeys = listOf("StartTime","startTime","start_time","RideDate","rideDate","ride_date",
+                            "SportTime","sportTime","BeginTime","beginTime","RideTime","rideTime",
+                            "createTime","CreateTime","start_date","startDate","Date","date","Time","time",
+                            "StartTimeStr","startTimeStr","StartDate","startDate")
+                        val timeVals = timeKeys.mapNotNull { k ->
+                            val v = item.optString(k, "")
+                            if (v.isNotEmpty()) "$k=$v" else null
+                        }
+                        Log.w(TAG, "===== iGPSPORT首活动调试 ===== keys=$allKeys")
+                        Log.w(TAG, "===== 时间字段: ${timeVals.joinToString(", ") ?: "(全部为空)"} =====")
+                    }
                     if (rideId.isEmpty()) continue
                     val downloadUrl = item.optString("DownloadUrl",
                         item.optString("downloadUrl",
@@ -82,18 +156,22 @@ class IgpsportApi {
                     if (dist < 0) dist = item.optDouble("distance", -1.0)
                     if (dist < 0) dist = item.optDouble("sportDistance", 0.0)
                     val distKm = if (dist >= 1000) dist / 1000.0 else dist
+                    // v6.3.6: 用辅助函数探测时间字段，避免嵌套括号
+                    val startTime = probeTimeField(item)
                     result.add(
                         ActivityRecord(
                             id = rideId,
                             title = item.optString("Title", item.optString("title", item.optString("name", "骑行"))),
-                            startTime = item.optString("StartTime", item.optString("startTime", item.optString("createTime", ""))),
+                            startTime = startTime,
                             distance = distKm,
                             duration = item.optInt("Duration", item.optInt("duration", item.optInt("movingTime", 0))),
                             source = DataSource.IGPSPORT,
                             extra = downloadUrl.ifEmpty { null }
                         )
                     )
+                    // v6.3.7 修复：添加limit条后立即break，否则for循环遍历完当前页20条全部添加（limit不生效）
                     if (result.size >= limit) break
+
                 }
                 if (result.size >= limit || rows.length() < PER_PAGE) break
                 currentPage++
@@ -140,4 +218,3 @@ class IgpsportApi {
 }
  
 
-XingzheApi.kt — 行者接口

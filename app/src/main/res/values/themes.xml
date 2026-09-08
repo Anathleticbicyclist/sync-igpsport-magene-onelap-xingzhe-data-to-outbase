@@ -4,33 +4,15 @@
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryDark">@color/primary_dark</item>
         <item name="colorAccent">@color/primary</item>
-        <item name="android:statusBarColor">@color/primary</item>
+        <item name="android:statusBarColor">@color/splash_end</item>
+        <item name="android:windowBackground">@color/bg_light</item>
+        <item name="colorControlActivated">@color/primary</item>
+    </style>
+
+    <!-- Toolbar 标题样式（居中、加粗） -->
+    <style name="TextAppearance.JichiOB.Toolbar" parent="TextAppearance.MaterialComponents.Headline6">
+        <item name="android:textSize">17sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/text_primary</item>
     </style>
 </resources>
- 
-
-
-7. 版本历史
-
-8. 开源许可
-MIT License
- 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
- 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
- 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-
-免责声明：本项目仅供个人数据迁移学习使用。各平台接口细节可能随时变化；请遵守各平台服务条款，勿用于高频请求或商业用途。gpx2fit.js 版权归 Outbase 原作者所有。
-
-鸣谢：
-感谢iGPSPORT、迈金、行者、Outbase为热爱运动用户提供的数据记录与存储服务
-感谢以下骑友(均为骑行爱称)为软件测试提供的帮助：素甲粉、青岛AUV阿哲、清茶、萧、洪斌大哥、鸽子王腰果、rockozhao、胶州一哥大沽河河长赵铁柱、海参
