@@ -46,9 +46,10 @@
 
 <p align="center">
   <img src="screenshots/01_login.png" alt="登录页" width="185">
-  <img src="screenshots/02_settings.png" alt="设置页" width="185">
-  <img src="screenshots/03_sync.png" alt="同步页" width="185">
-  <img src="screenshots/04_about.png" alt="关于页" width="185">
+  <img src="screenshots/02_settings_top.png" alt="设置页" width="185">
+  <img src="screenshots/03_settings_bottom.png" alt="设置页·参数" width="185">
+  <img src="screenshots/04_sync.png" alt="同步页" width="185">
+  <img src="screenshots/05_about.png" alt="关于页" width="185">
 </p>
 
 ---
