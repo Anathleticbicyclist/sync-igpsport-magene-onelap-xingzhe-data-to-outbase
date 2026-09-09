@@ -34,9 +34,9 @@ class SyncFragment : Fragment() {
     private lateinit var prefs: PrefsManager
     private var tvLog: TextView? = null
     private var logScrollView: ScrollView? = null
-    private var progressBar: LinearProgressIndicator? = null
     private var btnSync: MaterialButton? = null
     private var btnStop: MaterialButton? = null
+    private var btnSyncProgress: LinearProgressIndicator? = null
     private var tvLogReady = false
     private val pendingLogs = mutableListOf<String>()
     // v8.1: 统计摘要
@@ -47,6 +47,9 @@ class SyncFragment : Fragment() {
     private var cntOk = 0
     private var cntSkip = 0
     private var cntFail = 0
+    // v8.2: 按钮跑马灯呼吸动画 + 暂停滚动
+    private var breathAnim: android.animation.ValueAnimator? = null
+    private var logPaused = false
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         return inflater.inflate(R.layout.fragment_sync, container, false)
@@ -57,7 +60,7 @@ class SyncFragment : Fragment() {
         prefs = PrefsManager(requireContext())
         tvLog = view.findViewById(R.id.tvLog)
         logScrollView = view.findViewById(R.id.svLog)
-        progressBar = view.findViewById(R.id.progressBar)
+        btnSyncProgress = view.findViewById(R.id.btnSyncProgress)
         btnSync = view.findViewById(R.id.btnSync)
         btnStop = view.findViewById(R.id.btnStop)
         // v8.1: 统计摘要
@@ -65,6 +68,17 @@ class SyncFragment : Fragment() {
         statSkip = view.findViewById(R.id.statSkip)
         statFail = view.findViewById(R.id.statFail)
         statBar = view.findViewById(R.id.logStats)
+
+        // v8.2: 日志区 - 暂停滚动 / 清空
+        view.findViewById<View>(R.id.logPause)?.setOnClickListener {
+            logPaused = !logPaused
+            (view.findViewById<TextView>(R.id.logPause))?.text = if (logPaused) "继续滚动" else "暂停滚动"
+        }
+        view.findViewById<View>(R.id.logClear)?.setOnClickListener {
+            tvLog?.text = "等待操作..."
+            cntOk = 0; cntSkip = 0; cntFail = 0
+            statBar?.visibility = View.GONE
+        }
 
         // 操作按钮
         btnSync?.setOnClickListener { (activity as? MainActivity)?.startSync() }
@@ -127,7 +141,9 @@ class SyncFragment : Fragment() {
         tv.text = buildColoredLog(newText)
         // v8.1: 统计摘要（成功/跳过/失败）
         countAndUpdateStats(message)
-        logScrollView?.post { try { logScrollView?.fullScroll(ScrollView.FOCUS_DOWN) } catch (_: Exception) {} }
+        if (!logPaused) {
+            logScrollView?.post { try { logScrollView?.fullScroll(ScrollView.FOCUS_DOWN) } catch (_: Exception) {} }
+        }
     }
 
     /** v8.1: 按状态累加并刷新统计摘要条 */
@@ -196,22 +212,46 @@ class SyncFragment : Fragment() {
         return s
     }
 
-    /** MainActivity调用：设置同步中状态 */
+    /** MainActivity调用：设置同步中状态（v8.2: 按钮进度条 + 呼吸动画，随同步缓慢推进至填满） */
     fun setSyncing(syncing: Boolean) {
         com.jichi.ob.AutoSyncWorker.syncing = syncing
         val btnS = btnSync ?: return
         val btnT = btnStop ?: return
-        val pb = progressBar ?: return
+        val bp = btnSyncProgress
         btnS.isEnabled = !syncing
         btnT.isEnabled = syncing
-        btnS.text = if (syncing) "⏳ 同步中..." else "🚴 开始同步"
-        pb.visibility = if (syncing) View.VISIBLE else View.GONE
-        if (syncing) pb.isIndeterminate = true
+        btnS.text = if (syncing) "同步中..." else "开始同步"
+        if (syncing) {
+            // 启动按钮跑马灯：进度条呼吸动画（缓慢推进由 setProgress 控制）
+            bp?.visibility = View.VISIBLE
+            bp?.isIndeterminate = false
+            breathAnim?.cancel()
+            breathAnim = android.animation.ValueAnimator.ofFloat(0.55f, 1f, 0.55f).apply {
+                duration = 2200L
+                repeatCount = android.animation.ValueAnimator.INFINITE
+                addUpdateListener { bp?.alpha = it.animatedValue as Float }
+                start()
+            }
+        } else {
+            // 同步结束：进度条填满后淡出，停止呼吸
+            breathAnim?.cancel()
+            breathAnim = null
+            val p = bp
+            if (p != null) {
+                p.alpha = 1f
+                p.progress = p.max
+                p.postDelayed({
+                    try { p.visibility = View.GONE; p.progress = 0 } catch (_: Exception) {}
+                }, 600L)
+            }
+        }
     }
 
-    fun setProgressIndeterminate(v: Boolean) { progressBar?.isIndeterminate = v }
-    fun setProgressMax(max: Int) { progressBar?.max = max }
-    fun setProgress(cur: Int) { progressBar?.progress = cur }
+    fun setProgressIndeterminate(v: Boolean) { btnSyncProgress?.isIndeterminate = v }
+    fun setProgressMax(max: Int) { btnSyncProgress?.max = max }
+    fun setProgress(cur: Int) {
+        btnSyncProgress?.progress = cur
+    }
 
     private fun copyLog() {
         val log = tvLog?.text?.toString() ?: ""

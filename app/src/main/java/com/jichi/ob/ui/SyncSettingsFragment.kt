@@ -160,7 +160,7 @@ class SyncSettingsFragment : Fragment() {
                 setButtonSelected(btn, true, tag)
             }
         }
-        view?.findViewById<TextView>(R.id.tvTargetHint)?.text = "同步目标 (固定):"
+        view?.findViewById<TextView>(R.id.tvTargetHint)?.text = "同步目标"
     }
 
     /** v8.0.0: 忽略记忆强制重传开关状态（用户自选） */

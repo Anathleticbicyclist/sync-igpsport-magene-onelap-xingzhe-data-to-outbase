@@ -14,6 +14,9 @@
     <color name="text_secondary">#8A919C</color>
     <color name="text_tertiary">#B4BAC4</color>
     <color name="grey_light">#EFF2F6</color>
+    <color name="bg_line">#EEF2F7</color>          <!-- 分隔线 -->
+    <color name="bg_card_sub">#F1F5FA</color>     <!-- 次级按钮/浅底 -->
+    <color name="warn_dark">#D9830B</color>       <!-- 橙色深字 -->
 
     <!-- 状态色 -->
     <color name="ok_green">#2FBD71</color>

@@ -7,7 +7,7 @@
 [![Android](https://img.shields.io/badge/Platform-Android-green)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-blue)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v8.1.0-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-v8.1.1-brightgreen)]()
 
 一款 Android 运动数据迁移工具：**一次勾选多个数据源平台，统一批量上传到 Outbase**，解决骑行/跑步数据散落在多个平台、难以集中管理的痛点。
 
@@ -178,6 +178,18 @@ cd sync-igpsport-magene-onelap-xingzhe-data-to-outbase
 ---
 
 ## 📋 更新日志
+
+### v8.1.1（2026-09-09）
+
+**已解决**
+- 同步页与设置页全面改版：同步页四卡分区（后台同步 / 操作 / 统计 / 运行日志），设置页分组卡片（数据来源 / 同步目标 / 同步数量 / 数据处理 / 日期过滤 / 存储），界面更清爽易读
+- 开始同步按钮新增同步进度动画：跑马灯呼吸推进，随同步完成逐渐填满
+- 操作按钮改为 2×2 网格布局，文字完整显示不再截断
+- 设置页说明文字加深加大，数据来源网格严格对齐，消除文字看不清问题
+
+**未解决**
+- 佳明中国服务器端响应慢（见已知问题）
+- 百锐腾下载开发中
 
 ### v8.1.0（2026-09-08）
 

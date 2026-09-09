@@ -37,7 +37,7 @@
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="6dp"
             android:paddingStart="12dp" android:paddingEnd="12dp" android:paddingTop="3dp" android:paddingBottom="3dp"
-            android:text="正式版 v8.1.0"
+            android:text="正式版 v8.1.1"
             android:textColor="@color/white"
             android:textSize="12sp" android:textStyle="bold"
             android:background="@drawable/version_badge_bg" />
@@ -73,8 +73,11 @@
             app:cardCornerRadius="16dp"
             app:cardElevation="1dp">
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="📋 本次更新 (v8.1.0)" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="1. 界面全面焕新：清新扁平化设计、全新图标、日志状态时间线，更清爽易读\n2. 多对一批量同步：一次勾选多个数据来源，统一上传到 Outbase，数据集中管理\n3. 新增「仅同步指定日期之前」：可只回溯历史数据，之后的数据自动跳过\n4. 后台自动同步更可靠：执行、完成、跳过、失败均有通知提醒，不再静默无感知\n5. 存储目录优化为「下载/迈向Ob」，旧版本已下载数据自动迁移、不丢失\n6. 来源平台全名区分（佳明/高驰 中国·国际），百锐腾标记开发中" android:textSize="12sp" android:textColor="@color/text_primary" android:lineSpacingExtra="2dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="📋 更新日志" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v8.1.1 · 本次更新" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="优化体验：同步页与设置页全面改版，界面更清爽易读；同步进度动画、按钮布局、文字清晰度等细节打磨" android:textSize="12sp" android:textColor="@color/text_primary" android:lineSpacingExtra="2dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v8.1.0" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="1. 界面全面焕新：清新扁平化设计、全新图标\n2. 多对一批量同步：一次勾选多个数据来源，统一上传到 Outbase\n3. 新增「仅同步指定日期之前」\n4. 后台自动同步增加通知提醒\n5. 存储目录优化为「下载/迈向Ob」\n6. 来源平台全名区分，百锐腾标记开发中" android:textSize="12sp" android:textColor="@color/text_primary" android:lineSpacingExtra="2dp" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="📦 已知问题" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="佳明中国平台服务器响应较慢，单条同步耗时约30-60秒属正常现象" android:textSize="12sp" android:textColor="@color/text_primary" android:lineSpacingExtra="2dp" />
             </LinearLayout>
