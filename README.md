@@ -240,6 +240,42 @@ cd sync-igpsport-magene-onelap-xingzhe-data-to-outbase
 
 ---
 
+## 📄 免责声明 / Disclaimer
+
+**一、独立项目声明**
+本应用是一款由个人开发者独立维护、完全开源的个人工具，与 OneLap、Strava、Intervals.icu、Outbase、iGPSPORT、行者、迈金、黑鸟单车、百锐腾、佳明、高驰、Wahoo 等所有在本项目中提及的平台及其官方主体均**无任何关联、合作、授权或背书关系**。本应用不以任何形式代表上述平台。各平台名称、商标、LOGO 均为其各自权利人的财产，仅用于标识用户数据来源，不构成任何关联或授权声明。
+
+**二、使用风险自担**
+本应用按"现状"（AS IS）提供，作者对其适用性、准确性、稳定性、完整性及不侵权性不作任何明示或默示的担保。用户自愿选择使用本应用，因使用、误用或依赖本应用（包括但不限于数据同步异常、数据丢失、账号异常、平台风控或第三方服务变更）所产生的一切直接或间接损失，均由用户自行承担，作者不承担任何责任。
+
+**三、数据与隐私**
+本应用**不向任何第三方或作者控制的服务器收集、存储或传输**用户个人数据。活动数据仅在用户**主动触发同步**时上传至用户指定的目标平台。所有平台账号凭证（含登录 Cookie、Token 等）仅保存在设备本地，不向任何服务器上传。
+
+**四、合规使用**
+用户应自行确保其使用方式符合各目标平台的服务条款、用户协议及所在国家或地区的法律法规。本应用仅用于用户对**自有数据**的迁移、备份与归集，不得用于商业用途、数据爬取、批量抓取或任何侵犯第三方权益的行为。因用户违规使用导致的账号封禁、数据删除或其他后果，作者不承担任何责任。
+
+**五、开源与担保豁免**
+本应用以 MIT 协议开源，用户可自由查看、修改与分发源码；开源授权不构成对本免责声明的豁免，亦不构成任何形式的担保。
+
+---
+
+**1. Independent Project Statement**
+This app is a personal open-source tool maintained by an individual developer. It has **no affiliation, partnership, authorization or endorsement** from OneLap, Strava, Intervals.icu, Outbase, iGPSPORT, Xingzhe, Magene, Blackbird, Bryton, Garmin, COROS, Wahoo or any other platform mentioned in this project, nor their official entities. This app does not represent any of the above platforms. All platform names, trademarks and logos are the property of their respective owners and are used solely to identify data sources.
+
+**2. Use at Your Own Risk**
+The app is provided "AS IS" without warranties of any kind, express or implied, including but not limited to fitness, accuracy, stability, completeness or non-infringement. By using this app, you acknowledge that all direct or indirect losses arising from the use, misuse or reliance on this app (including but not limited to abnormal synchronization, data loss, account issues, platform risk control or third-party service changes) shall be borne by yourself. The author accepts no liability.
+
+**3. Data & Privacy**
+This app does **not** collect, store or transmit your personal data to any third party or author-controlled server. Activity data is only uploaded to your designated destination platform when you explicitly trigger a sync. All credentials (including cookies and tokens) are stored locally on your device only and are never uploaded to any server.
+
+**4. Compliant Use**
+You are solely responsible for ensuring that your use complies with the terms of service of each destination platform and the laws of your country or region. This app is intended solely for the migration, backup and aggregation of your **own data**. It must not be used for commercial purposes, data scraping, bulk crawling or any act that infringes the rights of third parties. The author accepts no liability for account bans, data loss or other consequences resulting from your non-compliant use.
+
+**5. Open Source & Warranty Disclaimer**
+This app is open-sourced under the MIT License. You are free to view, modify and distribute the source code. The open-source license neither waives this disclaimer nor constitutes any form of warranty.
+
+---
+
 ## 📄 数据版权声明
 
 各平台数据版权归原平台和该数据产生用户共同所有，本工具仅用于用户个人数据的迁移与备份，不得用于商业用途或数据爬取。
