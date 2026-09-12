@@ -180,9 +180,20 @@
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:text="存储" android:textSize="14sp" android:textStyle="bold"
                     android:textColor="@color/text_primary" android:layout_marginBottom="8dp" />
-                <TextView android:id="@+id/tvSaveDir" android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:textSize="12sp" android:textColor="@color/text_secondary"
-                    android:maxLines="1" android:ellipsize="middle" />
+                <LinearLayout
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="horizontal" android:gravity="center_vertical">
+                    <TextView android:id="@+id/tvSaveDir" android:layout_width="0dp" android:layout_height="wrap_content"
+                        android:layout_weight="1" android:textSize="12sp" android:textColor="@color/text_secondary"
+                        android:maxLines="1" android:ellipsize="middle" />
+                    <TextView android:id="@+id/btnOpenSaveDir" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text="打开目录" android:textSize="12sp" android:textStyle="bold"
+                        android:textColor="@color/primary_dark"
+                        android:background="@drawable/input_box_bg" android:paddingStart="10dp" android:paddingEnd="10dp"
+                        android:paddingTop="5dp" android:paddingBottom="5dp"
+                        android:clickable="true" android:focusable="true" />
+                </LinearLayout>
                 <TextView android:id="@+id/tvSyncedCount" android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:layout_marginTop="4dp" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/green" />
             </LinearLayout>

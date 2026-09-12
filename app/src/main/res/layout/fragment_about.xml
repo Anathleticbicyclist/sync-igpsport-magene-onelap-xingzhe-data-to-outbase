@@ -12,50 +12,83 @@
         android:orientation="vertical"
         android:padding="12dp">
 
-        <!-- Logo -->
-        <ImageView
-            android:layout_width="96dp"
-            android:layout_height="96dp"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="12dp"
-            android:src="@mipmap/ic_launcher"
-            android:contentDescription="logo" />
-
-        <!-- 应用名 + 版本 -->
-        <TextView
+        <!-- v8.1.2: 品牌区（Logo左 + 名称/slogan/版本 + 检查更新最右侧，白卡一行） -->
+        <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:gravity="center"
-            android:text="迈向Ob"
-            android:textColor="@color/text_primary"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="6dp"
-            android:paddingStart="12dp" android:paddingEnd="12dp" android:paddingTop="3dp" android:paddingBottom="3dp"
-            android:text="正式版 v8.1.1"
-            android:textColor="@color/white"
-            android:textSize="12sp" android:textStyle="bold"
-            android:background="@drawable/version_badge_bg" />
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:layout_marginTop="4dp"
-            android:text="让运动数据自由流动"
-            android:textColor="@color/primary"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:layout_marginBottom="6dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="1dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:padding="12dp">
+
+                <ImageView
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
+                    android:src="@mipmap/ic_launcher"
+                    android:contentDescription="logo" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="12dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="迈向Ob"
+                        android:textColor="@color/text_primary"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="1dp"
+                        android:text="让运动数据自由流动"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
+                        android:text="正式版 v8.1.2"
+                        android:textColor="@color/primary"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <!-- 检查更新：白卡最右侧，与周围融合 -->
+                <TextView
+                    android:id="@+id/btnCheckUpdate"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_check_update"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:paddingStart="12dp"
+                    android:paddingTop="6dp"
+                    android:paddingEnd="12dp"
+                    android:paddingBottom="6dp"
+                    android:text="检查更新"
+                    android:textColor="@color/primary"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
         <!-- 一句话介绍 -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="2dp"
             android:padding="10dp"
             android:background="#FFFFFF" android:layout_marginStart="4dp" android:layout_marginEnd="4dp"
             android:gravity="center"
@@ -74,10 +107,10 @@
             app:cardElevation="1dp">
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="📋 更新日志" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v8.1.1 · 本次更新" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v8.1.2 · 本次更新" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="1. 关于页新增「检查更新」，一键查看正式版最新版本\n2. 关于页底部新增开源软件免责声明（中英双语）\n3. 关于页品牌区全新排布，更清爽易读\n4. 设置页存储卡片新增「打开目录」，一键跳转查看已同步数据" android:textSize="12sp" android:textColor="@color/text_primary" android:lineSpacingExtra="2dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v8.1.1" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="优化体验：同步页与设置页全面改版，界面更清爽易读；同步进度动画、按钮布局、文字清晰度等细节打磨" android:textSize="12sp" android:textColor="@color/text_primary" android:lineSpacingExtra="2dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v8.1.0" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="1. 界面全面焕新：清新扁平化设计、全新图标\n2. 多对一批量同步：一次勾选多个数据来源，统一上传到 Outbase\n3. 新增「仅同步指定日期之前」\n4. 后台自动同步增加通知提醒\n5. 存储目录优化为「下载/迈向Ob」\n6. 来源平台全名区分，百锐腾标记开发中" android:textSize="12sp" android:textColor="@color/text_primary" android:lineSpacingExtra="2dp" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="📦 已知问题" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="佳明中国平台服务器响应较慢，单条同步耗时约30-60秒属正常现象" android:textSize="12sp" android:textColor="@color/text_primary" android:lineSpacingExtra="2dp" />
             </LinearLayout>
@@ -139,9 +172,23 @@
             android:layout_height="wrap_content"
             android:gravity="center"
             android:layout_marginTop="6dp"
-            android:layout_marginBottom="12dp"
+            android:layout_marginBottom="4dp"
             android:text="本项目完全开源免费，您的赞赏将支持后续功能迭代与问题修复"
             android:textColor="@color/text_secondary"
             android:textSize="10sp" />
+
+        <!-- v8.1.2: 开源软件免责声明超链接（小字、居中、蓝色、可点击弹窗） -->
+        <TextView
+            android:id="@+id/tvDisclaimerLink"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:layout_marginTop="2dp"
+            android:layout_marginBottom="8dp"
+            android:text="📜 开源软件免责声明"
+            android:textColor="@color/primary"
+            android:textSize="9sp"
+            android:clickable="true"
+            android:focusable="true" />
     </LinearLayout>
 </ScrollView>
