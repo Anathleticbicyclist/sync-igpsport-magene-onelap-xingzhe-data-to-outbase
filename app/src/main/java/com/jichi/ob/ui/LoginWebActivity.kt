@@ -17,6 +17,7 @@ import android.widget.ProgressBar
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
 import com.jichi.ob.R
+import com.jichi.ob.model.DataSource
 import com.jichi.ob.api.MageneApi
 import com.jichi.ob.api.XingzheApi
 import androidx.lifecycle.lifecycleScope
@@ -163,6 +164,15 @@ class LoginWebActivity : AppCompatActivity() {
                         tvStatus.text = "请输入邮箱和密码"
                         return@setOnClickListener
                     }
+                    // v8.2.0: 佳明登录风控——仅当该账号在该区域【所有SSO通道】都处于冷却时才拦截
+                    // （任一通道可用即放行，自动换通道登录绕开单通道限流）
+                    val dsCooldown = if (isCN) DataSource.GARMIN_CN else DataSource.GARMIN_COM
+                    if (com.jichi.ob.api.GarminApi.isAllChannelsCooldown(dsCooldown, email)) {
+                        btnLogin.isEnabled = true
+                        btnLogin.text = "登录"
+                        tvStatus.text = "❌ 该账号所有佳明登录通道均处于风控冷却中，请约${com.jichi.ob.api.GarminApi.cooldownRemainAnyMinutes(dsCooldown, email)}分钟后重试\n（冷却针对该账号，可切换其他账号登录）"
+                        return@setOnClickListener
+                    }
                     btnLogin.isEnabled = false
                     btnLogin.text = "登录中..."
                     tvStatus.text = "正在通过mobile SSO登录..."
@@ -179,9 +189,15 @@ class LoginWebActivity : AppCompatActivity() {
                                         .putExtra(RESULT_LOGIN_TYPE, loginType))
                                     finish()
                                 } else {
+                                    // v8.2.0: 若已触发429冷却，优先提示冷却时长（避免用户误以为密码错误反复重试）
+                                    val cooldownMin = com.jichi.ob.api.GarminApi.cooldownRemainAnyMinutes(dsCooldown, email)
                                     btnLogin.isEnabled = true
                                     btnLogin.text = "登录"
-                                    tvStatus.text = "❌ 登录失败，请检查邮箱密码\n（如开启了两步验证请先关闭）"
+                                    tvStatus.text = if (cooldownMin > 0) {
+                                        "❌ 登录失败，该账号所有佳明登录通道均触发风控限流\n请约${cooldownMin}分钟后重试（冷却期内反复尝试会延长封禁）"
+                                    } else {
+                                        "❌ 登录失败，请检查邮箱密码\n（如开启了两步验证请先关闭）"
+                                    }
                                 }
                             }
                         } catch (e: Exception) {

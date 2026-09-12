@@ -26,12 +26,15 @@ enum class DataSource(val displayName: String, val shortName: String) {
     GARMIN_CN("佳明中国", "gcn"),
     COROS_CN("高驰中国", "cscn"),
     COROS_INT("高驰国际", "cs"),
-    WAHOO("Wahoo", "wo");
+    WAHOO("Wahoo", "wo"),
+    // v8.2.0 新增：MyWhoosh / Zwift（仅下载数据源）
+    MYWHOOSH("MyWhoosh", "mw"),
+    ZWIFT("Zwift", "zf");
 
     companion object {
         /** 可作为"来源(下载)"的平台 */
         fun sourcePlatforms(): List<DataSource> =
-            listOf(IGPSPORT, XINGZHE, MAGENE, BLACKBIRD, BRYTON, GARMIN_COM, GARMIN_CN, COROS_CN, COROS_INT, WAHOO)
+            listOf(IGPSPORT, XINGZHE, MAGENE, BLACKBIRD, BRYTON, GARMIN_COM, GARMIN_CN, COROS_CN, COROS_INT, WAHOO, MYWHOOSH, ZWIFT)
         fun fromShortName(s: String): DataSource? = entries.find { it.shortName == s }
     }
 }
@@ -53,7 +56,9 @@ enum class DownloadSupport(val available: Boolean, val note: String) {
     GARMIN_CN(true, ""),
     COROS_CN(true, ""),
     COROS_INT(true, ""),
-    WAHOO(true, "");
+    WAHOO(true, ""),
+    MYWHOOSH(true, ""),
+    ZWIFT(true, "");
 
     companion object {
         fun fromDataSource(ds: DataSource): DownloadSupport = when (ds) {
@@ -67,6 +72,8 @@ enum class DownloadSupport(val available: Boolean, val note: String) {
             DataSource.COROS_CN -> COROS_CN
             DataSource.COROS_INT -> COROS_INT
             DataSource.WAHOO -> WAHOO
+            DataSource.MYWHOOSH -> MYWHOOSH
+            DataSource.ZWIFT -> ZWIFT
             else -> BRYTON
         }
     }
@@ -84,7 +91,9 @@ enum class UploadSupport(val available: Boolean, val note: String) {
     GARMIN_CN(false, "正式版仅支持上传到Outbase"),
     COROS_CN(false, "正式版仅支持上传到Outbase"),
     COROS_INT(false, "正式版仅支持上传到Outbase"),
-    WAHOO(false, "正式版仅支持上传到Outbase");
+    WAHOO(false, "正式版仅支持上传到Outbase"),
+    MYWHOOSH(false, "正式版仅支持上传到Outbase"),
+    ZWIFT(false, "正式版仅支持上传到Outbase");
 
     companion object {
         fun fromDataSource(ds: DataSource): UploadSupport = when (ds) {
@@ -99,6 +108,8 @@ enum class UploadSupport(val available: Boolean, val note: String) {
             DataSource.COROS_CN -> COROS_CN
             DataSource.COROS_INT -> COROS_INT
             DataSource.WAHOO -> WAHOO
+            DataSource.MYWHOOSH -> MYWHOOSH
+            DataSource.ZWIFT -> ZWIFT
         }
     }
 }

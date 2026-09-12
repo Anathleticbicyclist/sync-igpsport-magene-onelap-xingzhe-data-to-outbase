@@ -66,6 +66,8 @@ class AutoSyncWorker(
     private val garminApi = GarminApi()
     private val corosApi = CorosApi()
     private val wahooApi = WahooApi()
+    private val mywhooshApi = MyWhooshApi()
+    private val zwiftApi = ZwiftApi()
     private val uploadEngine = UploadEngine(applicationContext)
 
     override suspend fun doWork(): Result {
@@ -196,6 +198,7 @@ class AutoSyncWorker(
         val validTargetNames = validTargets.joinToString("、") { it.displayName }
         val sourceNames = sources.joinToString("、") { it.displayName }
         // v7.6.9: 自动同步过程写入持久日志，用户可在同步页查看
+        com.jichi.ob.api.GarminApi.setAppContext(applicationContext)  // v8.2.0: 佳明429风控冷却持久化（后台自动同步也生效）
         plog("⏰ 自动同步开始: $sourceNames → $validTargetNames")
         syncing = true
         try {
@@ -226,6 +229,8 @@ class AutoSyncWorker(
                         DataSource.COROS_CN -> corosApi.getActivities(sourceCred, 0, 8)
                         DataSource.COROS_INT -> corosApi.getActivities(sourceCred, 0, 8)
                         DataSource.WAHOO -> getWahooActivitiesWithRefresh(sourceCred, 0, 8)
+                        DataSource.MYWHOOSH -> mywhooshApi.getActivities(sourceCred, prefs.getMywhooshWhooshId() ?: "", 0, 8)
+                        DataSource.ZWIFT -> getZwiftActivitiesWithRefresh(sourceCred, prefs.getZwiftPlayerId(), prefs.getZwiftRefreshToken(), 0, 8)
                         else -> emptyList()
                     }
                 } catch (e: Exception) {
@@ -347,10 +352,33 @@ class AutoSyncWorker(
                 }
                 wahooApi.downloadFit(token, record.id)
             }
+            DataSource.MYWHOOSH -> {
+                val whooshId = prefs.getMywhooshWhooshId() ?: ""
+                mywhooshApi.downloadFit(cred, whooshId, record.extra ?: "")
+            }
+            DataSource.ZWIFT -> zwiftApi.downloadFit(record.extra ?: "")
             else -> null
         }
     }
 
+
+    /** v8.2.0: Zwift作为自动同步源——401时refresh_token刷新后重试 */
+    private suspend fun getZwiftActivitiesWithRefresh(token: String, playerId: String?, refresh: String?, skip: Int, limit: Int): List<ActivityRecord> {
+        try {
+            return zwiftApi.getActivities(token, playerId, skip, limit)
+        } catch (e: Exception) {
+            if (e.message?.contains("401") == true && !refresh.isNullOrEmpty()) {
+                val fresh = zwiftApi.refreshToken(refresh)
+                if (fresh != null) {
+                    prefs.saveZwiftToken(fresh.first)
+                    prefs.saveZwiftRefreshToken(fresh.second)
+                    plog("🔄 Zwift源 token已自动刷新")
+                    return zwiftApi.getActivities(fresh.first, prefs.getZwiftPlayerId(), skip, limit)
+                }
+            }
+            throw e
+        }
+    }
     /** v8.1.2: Wahoo作为自动同步源——刷新token后拉取活动列表（对齐开发体验版 v7.8.3） */
     private suspend fun getWahooActivitiesWithRefresh(cred: String, skip: Int, limit: Int): List<ActivityRecord> {
         var token = cred

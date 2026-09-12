@@ -24,7 +24,7 @@ import android.widget.Toast
 
 /**
  * v7.6.2: 四页面布局 - 页面1 登录页
- * 展示11个平台登录状态与登录按钮
+ * 展示13个平台登录状态与登录按钮
  */
 class LoginFragment : Fragment() {
 
@@ -52,6 +52,8 @@ class LoginFragment : Fragment() {
         statusViews[DataSource.COROS_CN] = view.findViewById(R.id.tvCorosCnStatus)
         statusViews[DataSource.COROS_INT] = view.findViewById(R.id.tvCorosIntStatus)
         statusViews[DataSource.WAHOO] = view.findViewById(R.id.tvWahooStatus)
+        statusViews[DataSource.MYWHOOSH] = view.findViewById(R.id.tvMywhooshStatus)
+        statusViews[DataSource.ZWIFT] = view.findViewById(R.id.tvZwiftStatus)
 
         btnViews[DataSource.IGPSPORT] = view.findViewById(R.id.btnIgpLogin)
         btnViews[DataSource.XINGZHE] = view.findViewById(R.id.btnXingzheLogin)
@@ -63,6 +65,8 @@ class LoginFragment : Fragment() {
         btnViews[DataSource.COROS_CN] = view.findViewById(R.id.btnCorosCnLogin)
         btnViews[DataSource.COROS_INT] = view.findViewById(R.id.btnCorosIntLogin)
         btnViews[DataSource.WAHOO] = view.findViewById(R.id.btnWahooLogin)
+        btnViews[DataSource.MYWHOOSH] = view.findViewById(R.id.btnMywhooshLogin)
+        btnViews[DataSource.ZWIFT] = view.findViewById(R.id.btnZwiftLogin)
 
         // v7.6.7: 注销按钮（每个卡片头部右上角，仅登录后显示）
         logoutViews[DataSource.IGPSPORT] = view.findViewById(R.id.btnIgpLogout)
@@ -75,6 +79,8 @@ class LoginFragment : Fragment() {
         logoutViews[DataSource.COROS_CN] = view.findViewById(R.id.btnCorosCnLogout)
         logoutViews[DataSource.COROS_INT] = view.findViewById(R.id.btnCorosIntLogout)
         logoutViews[DataSource.WAHOO] = view.findViewById(R.id.btnWahooLogout)
+        logoutViews[DataSource.MYWHOOSH] = view.findViewById(R.id.btnMywhooshLogout)
+        logoutViews[DataSource.ZWIFT] = view.findViewById(R.id.btnZwiftLogout)
 
         // 注销点击 → 确认后清除凭证并刷新
         for ((ds, tv) in logoutViews) {
@@ -104,6 +110,9 @@ class LoginFragment : Fragment() {
         btnViews[DataSource.COROS_CN]?.setOnClickListener { (activity as? MainActivity)?.openLogin(LoginWebActivity.TYPE_COROS_CN, CorosApi.LOGIN_URL_CN) }
         btnViews[DataSource.COROS_INT]?.setOnClickListener { (activity as? MainActivity)?.openLogin(LoginWebActivity.TYPE_COROS_INT, CorosApi.LOGIN_URL_INT) }
         btnViews[DataSource.WAHOO]?.setOnClickListener { (activity as? MainActivity)?.openWahooLogin() }
+        // v8.2.0: MyWhoosh/Zwift 纯API账号密码登录（不走WebView）
+        btnViews[DataSource.MYWHOOSH]?.setOnClickListener { (activity as? MainActivity)?.openMywhooshLogin() }
+        btnViews[DataSource.ZWIFT]?.setOnClickListener { (activity as? MainActivity)?.openZwiftLogin() }
 
         // v8.1: 卡片整体点击 → 触发对应平台登录（登录按钮隐藏保留，功能不变）
         cardViews[DataSource.IGPSPORT] = view.findViewById(R.id.cardIgp)
@@ -116,6 +125,8 @@ class LoginFragment : Fragment() {
         cardViews[DataSource.COROS_CN] = view.findViewById(R.id.cardCorosCn)
         cardViews[DataSource.COROS_INT] = view.findViewById(R.id.cardCorosInt)
         cardViews[DataSource.WAHOO] = view.findViewById(R.id.cardWahoo)
+        cardViews[DataSource.MYWHOOSH] = view.findViewById(R.id.cardMywhoosh)
+        cardViews[DataSource.ZWIFT] = view.findViewById(R.id.cardZwift)
         for ((ds, cv) in cardViews) {
             cv.setOnClickListener {
                 if (!prefs.isLoggedIn(ds)) {

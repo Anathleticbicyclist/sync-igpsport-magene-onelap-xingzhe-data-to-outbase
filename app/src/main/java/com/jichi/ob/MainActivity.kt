@@ -47,6 +47,8 @@ import com.jichi.ob.api.WahooApi
 import com.jichi.ob.api.WahooOAuth2Service
 import com.jichi.ob.api.IgpsportApi
 import com.jichi.ob.api.MageneApi
+import com.jichi.ob.api.MyWhooshApi
+import com.jichi.ob.api.ZwiftApi
 import com.jichi.ob.api.OutbaseApi
 import com.jichi.ob.api.UploadEngine
 import com.jichi.ob.api.XingzheApi
@@ -97,6 +99,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var brytonApi: BrytonApi
     private lateinit var outbaseApi: OutbaseApi
     private lateinit var garminApi: GarminApi
+    private lateinit var mywhooshApi: MyWhooshApi
+    private lateinit var zwiftApi: ZwiftApi
     private lateinit var corosApi: CorosApi
     private lateinit var wahooApi: WahooApi
     private lateinit var uploadEngine: UploadEngine
@@ -168,11 +172,15 @@ class MainActivity : AppCompatActivity() {
                         prefs.saveGarminComToken(token)
                         prefs.saveGarminComCookie("")
                         appendLog("✅ 佳明国际登录成功(mobile SSO+DI Token)"); fetchUsernameAfterLogin(DataSource.GARMIN_COM)
+                        // v8.2.0: 佳明风控引导——已生成长期刷新凭证，提醒勿频繁重新登录
+                        com.jichi.ob.util.GarminLoginHint.show(this, "佳明国际")
                     } else appendLog("⚠️ 佳明国际登录失败: 未获取到token")
                     LoginWebActivity.TYPE_GARMIN_CN -> if (token.length > 20) {
                         prefs.saveGarminCnToken(token)
                         prefs.saveGarminCnCookie("")
                         appendLog("✅ 佳明中国登录成功(JWT_WEB+session)"); fetchUsernameAfterLogin(DataSource.GARMIN_CN)
+                        // v8.2.0: 佳明风控引导——已生成长期刷新凭证，提醒勿频繁重新登录
+                        com.jichi.ob.util.GarminLoginHint.show(this, "佳明中国")
                     } else appendLog("⚠️ 佳明中国登录失败: 未获取到token")
                     LoginWebActivity.TYPE_COROS_CN -> if (sid.length > 10) {
                         prefs.saveCorosCnToken(sid)
@@ -234,6 +242,9 @@ class MainActivity : AppCompatActivity() {
             outbaseApi = OutbaseApi()
             garminApi = GarminApi()
             garminApi.initWebView(this)  // v6.7.3: 国际版用WebView绕过Cloudflare
+            com.jichi.ob.api.GarminApi.setAppContext(this)  // v8.2.0: 佳明429风控冷却持久化
+            mywhooshApi = MyWhooshApi()
+            zwiftApi = ZwiftApi()
             corosApi = CorosApi()
             wahooApi = WahooApi()
             uploadEngine = UploadEngine(this)
@@ -357,6 +368,120 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    /** v8.2.0: MyWhoosh 直接登录——账号密码原生表单直调 MyWhooshApi（纯API，仅下载源） */
+    internal fun openMywhooshLogin() {
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 24)
+        }
+        val accountInput = android.widget.EditText(this).apply {
+            hint = "MyWhoosh 账号（邮箱）"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            setText(prefs.getMywhooshAccount() ?: "")
+        }
+        val passwordInput = android.widget.EditText(this).apply {
+            hint = "MyWhoosh 密码"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
+        }
+        layout.addView(accountInput)
+        layout.addView(passwordInput)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("登录 MyWhoosh")
+            .setMessage("账号密码直接登录，MyWhoosh 作为数据源（仅下载，不支持上传）")
+            .setView(layout)
+            .setPositiveButton("登录") { _, _ ->
+                val account = accountInput.text.toString().trim()
+                val password = passwordInput.text.toString()
+                if (account.isEmpty() || password.isEmpty()) {
+                    appendLog("⚠️ 请输入 MyWhoosh 账号和密码")
+                    return@setPositiveButton
+                }
+                prefs.saveMywhooshAccount(account)
+                appendLog("🔐 MyWhoosh直接登录中...")
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val result = mywhooshApi.login(account, password)
+                    runOnUiThread {
+                        if (result != null) {
+                            prefs.saveMywhooshToken(result.token)
+                            prefs.saveMywhooshWhooshId(result.whooshId)
+                            prefs.saveMywhooshRefreshToken(result.refreshToken)
+                            appendLog("✅ MyWhoosh登录成功")
+                            fetchUsernameAfterLogin(DataSource.MYWHOOSH)
+                        } else {
+                            appendLog("❌ MyWhoosh登录失败：账号或密码错误，请重新输入")
+                        }
+                        loginFragment.updateStatus()
+                        try { settingsFragment?.refreshLoginState() } catch (_: Exception) {}
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** v8.2.0: Zwift 直接登录——账号密码原生表单直调 ZwiftApi（纯API，仅下载源） */
+    internal fun openZwiftLogin() {
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 24)
+        }
+        val accountInput = android.widget.EditText(this).apply {
+            hint = "Zwift 账号（邮箱）"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            setText(prefs.getZwiftAccount() ?: "")
+        }
+        val passwordInput = android.widget.EditText(this).apply {
+            hint = "Zwift 密码"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
+        }
+        layout.addView(accountInput)
+        layout.addView(passwordInput)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("登录 Zwift")
+            .setMessage("账号密码直接登录，Zwift 作为数据源（仅下载，不支持上传）")
+            .setView(layout)
+            .setPositiveButton("登录") { _, _ ->
+                val account = accountInput.text.toString().trim()
+                val password = passwordInput.text.toString()
+                if (account.isEmpty() || password.isEmpty()) {
+                    appendLog("⚠️ 请输入 Zwift 账号和密码")
+                    return@setPositiveButton
+                }
+                prefs.saveZwiftAccount(account)
+                appendLog("🔐 Zwift直接登录中...")
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val result = zwiftApi.login(account, password)
+                    runOnUiThread {
+                        if (result != null) {
+                            prefs.saveZwiftToken(result.token)
+                            prefs.saveZwiftRefreshToken(result.refreshToken)
+                            // 解析 playerId 供活动列表使用
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                val pid = zwiftApi.getProfileId(result.token)
+                                runOnUiThread {
+                                    if (!pid.isNullOrBlank()) prefs.saveZwiftPlayerId(pid)
+                                    appendLog("✅ Zwift登录成功")
+                                    fetchUsernameAfterLogin(DataSource.ZWIFT)
+                                    loginFragment.updateStatus()
+                                    try { settingsFragment?.refreshLoginState() } catch (_: Exception) {}
+                                }
+                            }
+                        } else {
+                            appendLog("❌ Zwift登录失败：账号或密码错误，请重新输入")
+                            loginFragment.updateStatus()
+                            try { settingsFragment?.refreshLoginState() } catch (_: Exception) {}
+                        }
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
     /**
      * v7.5.1: 佳明中国直接登录（模拟garth库mobile SSO流程，不需要WebView）
      * 用邮箱密码直接获取OAuth2 Bearer token，调用connectapi.garmin.cn
@@ -389,6 +514,12 @@ class MainActivity : AppCompatActivity() {
                     appendLog("⚠️ 请输入邮箱和密码")
                     return@setPositiveButton
                 }
+                // v8.2.0: 佳明中国补风控检查——按账号维度（中国区走OAuth1→OAuth2，主通道GCM_ANDROID_DARK）
+                if (com.jichi.ob.api.GarminApi.isCooldown(DataSource.GARMIN_CN, email, "GCM_ANDROID_DARK")) {
+                    val remain = com.jichi.ob.api.GarminApi.cooldownRemainMinutes(DataSource.GARMIN_CN, email, "GCM_ANDROID_DARK")
+                    appendLog("❌ 该账号处于佳明中国风控冷却中，请约${remain}分钟后重试（冷却仅针对该账号，可切换其他账号登录）")
+                    return@setPositiveButton
+                }
                 appendLog("🔐 佳明中国直接登录中...")
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
@@ -401,18 +532,32 @@ class MainActivity : AppCompatActivity() {
                             put("jwt_web", "")
                             put("session", "")
                             put("csrf", "")
+                            // v8.2.0: 记录账号email，便于refresh按账号维度冷却
+                            put("email", email)
                         }.toString()
                         runOnUiThread {
                             prefs.saveGarminCnToken(cred)
                             prefs.saveGarminCnCookie("")
                             appendLog("✅ 佳明中国登录成功(mobile SSO+DI Token)")
+                            com.jichi.ob.util.GarminLoginHint.show(this@MainActivity, "佳明中国")
                             fetchUsernameAfterLogin(DataSource.GARMIN_CN)
                             loginFragment.updateStatus()
                         }
                     } catch (e: Exception) {
-                        runOnUiThread {
-                            appendLog("❌ 佳明中国登录失败: ${e.message}")
-                            loginFragment.updateStatus()
+                        // v8.2.0: 佳明中国429（风控）单独提示 + 写冷却
+                        val msg = e.message ?: ""
+                        if (msg.contains("429") || msg.contains("rate limit") || msg.contains("限流")) {
+                            com.jichi.ob.api.GarminApi.writeCooldownFor(DataSource.GARMIN_CN, email, "GCM_ANDROID_DARK")
+                            val remain = com.jichi.ob.api.GarminApi.cooldownRemainMinutes(DataSource.GARMIN_CN, email, "GCM_ANDROID_DARK")
+                            runOnUiThread {
+                                appendLog("❌ 佳明中国触发风控限流(429)，已写入冷却。该账号请约${remain}分钟后重试（冷却仅针对该账号）")
+                                loginFragment.updateStatus()
+                            }
+                        } else {
+                            runOnUiThread {
+                                appendLog("❌ 佳明中国登录失败: $msg")
+                                loginFragment.updateStatus()
+                            }
                         }
                     }
                 }
@@ -479,7 +624,7 @@ class MainActivity : AppCompatActivity() {
             val platforms = listOf(
                 DataSource.IGPSPORT, DataSource.XINGZHE, DataSource.MAGENE, DataSource.BLACKBIRD,
                 DataSource.BRYTON, DataSource.OUTBASE, DataSource.GARMIN_COM, DataSource.GARMIN_CN,
-                DataSource.COROS_CN, DataSource.COROS_INT, DataSource.WAHOO
+                DataSource.COROS_CN, DataSource.COROS_INT, DataSource.WAHOO, DataSource.MYWHOOSH, DataSource.ZWIFT
             )
             for (ds in platforms) {
                 if (!prefs.isLoggedIn(ds)) continue  // 未登录过的跳过，不发无用请求
@@ -498,6 +643,8 @@ class MainActivity : AppCompatActivity() {
                         DataSource.COROS_CN -> corosApi.getUsername(cred)
                         DataSource.COROS_INT -> corosApi.getUsername(cred)
                         DataSource.WAHOO -> wahooApi.getUsername(cred)
+                        DataSource.MYWHOOSH -> mywhooshApi.getUsername(cred)
+                        DataSource.ZWIFT -> zwiftApi.getUsername(cred)
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "启动登录检测 ${ds.displayName} 异常: ${e.message}")
@@ -592,7 +739,11 @@ class MainActivity : AppCompatActivity() {
                 } else null
             }
         }
-        DataSource.GARMIN_COM, DataSource.GARMIN_CN -> null  // 佳明无自动刷新，需重新登录
+        // v8.2.0: 佳明DI token静默刷新（用refresh_token，不重新SSO登录，避免撞429风控）
+        // ensureValidToken内部判断：未过期→原样返回；过期且有refresh_token→刷新返回新凭证
+        DataSource.GARMIN_COM, DataSource.GARMIN_CN -> {
+            try { garminApi.ensureValidToken(ds, cred) } catch (e: Exception) { null }
+        }
         else -> null
     }
 
@@ -612,6 +763,8 @@ class MainActivity : AppCompatActivity() {
                 DataSource.COROS_CN -> corosApi.getUsername(cred)
                 DataSource.COROS_INT -> corosApi.getUsername(cred)
                 DataSource.WAHOO -> wahooApi.getUsername(cred)
+                DataSource.MYWHOOSH -> mywhooshApi.getUsername(cred)
+                DataSource.ZWIFT -> zwiftApi.getUsername(cred)
             }
             if (name != null) {
                 prefs.saveUsername(ds, name)
@@ -911,7 +1064,36 @@ class MainActivity : AppCompatActivity() {
                 }
                 wahooApi.getActivities(token, skip, limit)
             }
+            DataSource.MYWHOOSH -> {
+                // v8.2.0: MyWhoosh 无 refresh 端点，401 时抛异常提示重新登录
+                val whooshId = prefs.getMywhooshWhooshId() ?: ""
+                mywhooshApi.getActivities(cred, whooshId, skip, limit)
+            }
+            DataSource.ZWIFT -> {
+                // v8.2.0: Zwift 401 时用 refresh_token 刷新后重试
+                getZwiftActivitiesWithRefresh(cred, prefs.getZwiftPlayerId(), prefs.getZwiftRefreshToken(), skip, limit)
+            }
             else -> emptyList()
+        }
+    }
+
+    /** v8.2.0: Zwift 源列表——401/过期时用 refresh_token 刷新后重试一次 */
+    private suspend fun getZwiftActivitiesWithRefresh(
+        token: String, playerId: String?, refresh: String?, skip: Int, limit: Int
+    ): List<ActivityRecord> {
+        try {
+            return zwiftApi.getActivities(token, playerId, skip, limit)
+        } catch (e: Exception) {
+            if (e.message?.contains("401") == true && !refresh.isNullOrEmpty()) {
+                val fresh = zwiftApi.refreshToken(refresh)
+                if (fresh != null) {
+                    prefs.saveZwiftToken(fresh.first)
+                    prefs.saveZwiftRefreshToken(fresh.second)
+                    appendLog("🔄 Zwift token已自动刷新")
+                    return zwiftApi.getActivities(fresh.first, prefs.getZwiftPlayerId(), skip, limit)
+                }
+            }
+            throw e
         }
     }
 
@@ -980,6 +1162,15 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 wahooApi.downloadFit(token, record.id)
+            }
+            DataSource.MYWHOOSH -> {
+                // v8.2.0: MyWhoosh 下载（extra=activityFileId）
+                val whooshId = prefs.getMywhooshWhooshId() ?: ""
+                mywhooshApi.downloadFit(cred, whooshId, record.extra ?: "")
+            }
+            DataSource.ZWIFT -> {
+                // v8.2.0: Zwift S3 直链下载（extra=bucket|key），S3 无需 token
+                zwiftApi.downloadFit(record.extra ?: "")
             }
             else -> null
         }

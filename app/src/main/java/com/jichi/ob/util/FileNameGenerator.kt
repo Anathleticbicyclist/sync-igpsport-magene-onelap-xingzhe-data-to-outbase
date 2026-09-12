@@ -21,7 +21,9 @@ object FileNameGenerator {
         DataSource.MAGENE to "Magene",
         DataSource.BLACKBIRD to "Blackbird",
         DataSource.BRYTON to "Bryton",
-        DataSource.OUTBASE to "Outbase"
+        DataSource.OUTBASE to "Outbase",
+        DataSource.MYWHOOSH to "MyWhoosh",
+        DataSource.ZWIFT to "Zwift"
     )
 
     /** 常见运动类型关键词（按优先级匹配） */

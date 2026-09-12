@@ -7,7 +7,7 @@
 [![Android](https://img.shields.io/badge/Platform-Android-green)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-blue)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v8.1.2-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-v8.2.0-brightgreen)]()
 
 一款 Android 运动数据迁移工具：**一次勾选多个数据源平台，统一批量上传到 Outbase**，解决骑行/跑步数据散落在多个平台、难以集中管理的痛点。
 
@@ -25,7 +25,7 @@
 
 - 🎯 **多对一上传** — 一次勾选多个数据来源平台，统一上传到 Outbase，每条记录自动去重
 - ✅ **批量同步** — 支持 1~1000 条记录，可跳过前 N 条历史数据
-- 🔄 **后台自动同步** — WorkManager 调度，系统级保活，跨开机自动恢复，可配置检测间隔，支持全部 10 个来源平台
+- 🔄 **后台自动同步** — WorkManager 调度，系统级保活，跨开机自动恢复，可配置检测间隔，支持全部 12 个来源平台
 - 📋 **详细运行日志** — 全程记录，一键复制，失败原因分类
 - 💾 **同步记忆** — 已上传记录自动记忆，不重复上传；支持"忽略记忆，强制重传"
 - 📅 **仅同步指定日期之前** — 开启后只同步截止日期之前的历史数据，适合回溯旧记录
@@ -71,6 +71,8 @@
 | **高驰中国** | WebView 登录 | FIT |
 | **高驰国际** | WebView 登录 | FIT |
 | **Wahoo** | OAuth2 登录 | FIT |
+| **MyWhoosh** | 账号密码登录 | FIT |
+| **Zwift** | 账号密码登录 | FIT |
 
 ### 同步目标（固定）
 
@@ -180,6 +182,17 @@ cd sync-igpsport-magene-onelap-xingzhe-data-to-outbase
 ---
 
 ## 📋 更新日志
+
+### v8.2.0（2026-09-12）
+
+**已解决**
+- 新增数据源 MyWhoosh、Zwift（账号密码直接登录，纯 API，仅下载，支持手动与自动同步，正式版仍只上传 Outbase）
+- 佳明登录风控优化（对齐开发体验版）：佳明国际/中国登录成功提示勿频繁重登；佳明中国按账号维度冷却（429 触发自动写入冷却并提示剩余时长）；佳明 DI token 用 refresh_token 静默续期，无需反复重新 SSO 登录
+- 后台自动同步数据源扩展至 12 个（新增 MyWhoosh、Zwift）
+
+**未解决**
+- 佳明中国服务器端响应慢（见已知问题）
+- 百锐腾下载开发中
 
 ### v8.1.2（2026-09-11）
 
@@ -314,6 +327,8 @@ This app is open-sourced under the MIT License. You are free to view, modify and
 - 佳明 — 智能运动手表与生态平台 [www.garmin.com](https://www.garmin.com/)
 - 高驰 — 户外运动手表与数据平台 [www.coros.com](https://www.coros.com/)
 - Wahoo — 智能骑行设备与训练平台 [www.wahoofitness.com](https://www.wahoofitness.com/)
+- MyWhoosh — 室内虚拟骑行平台 [www.mywhoosh.com](https://www.mywhoosh.com/)
+- Zwift — 室内虚拟骑行与训练平台 [www.zwift.com](https://www.zwift.com/)
 - Outbase — 运动数据聚合平台 [outbase.cn](https://outbase.cn/)
 
 感谢以下人员（均为骑行爱称）为软件测试提供的帮助：素甲粉、青岛AUV阿哲、清茶、萧、洪斌大哥、鸽子王腰果、rockozhao、胶州一哥大沽河河长赵铁柱、海参、兰兰大王、。。、初夏飞雪bab、心急吃不了热豆付、青山依旧张指导、阿泽阿
