@@ -54,6 +54,7 @@ class LoginFragment : Fragment() {
         statusViews[DataSource.WAHOO] = view.findViewById(R.id.tvWahooStatus)
         statusViews[DataSource.MYWHOOSH] = view.findViewById(R.id.tvMywhooshStatus)
         statusViews[DataSource.ZWIFT] = view.findViewById(R.id.tvZwiftStatus)
+        statusViews[DataSource.KEEP] = view.findViewById(R.id.tvKeepStatus)
 
         btnViews[DataSource.IGPSPORT] = view.findViewById(R.id.btnIgpLogin)
         btnViews[DataSource.XINGZHE] = view.findViewById(R.id.btnXingzheLogin)
@@ -67,6 +68,7 @@ class LoginFragment : Fragment() {
         btnViews[DataSource.WAHOO] = view.findViewById(R.id.btnWahooLogin)
         btnViews[DataSource.MYWHOOSH] = view.findViewById(R.id.btnMywhooshLogin)
         btnViews[DataSource.ZWIFT] = view.findViewById(R.id.btnZwiftLogin)
+        btnViews[DataSource.KEEP] = view.findViewById(R.id.btnKeepLogin)
 
         // v7.6.7: 注销按钮（每个卡片头部右上角，仅登录后显示）
         logoutViews[DataSource.IGPSPORT] = view.findViewById(R.id.btnIgpLogout)
@@ -81,6 +83,7 @@ class LoginFragment : Fragment() {
         logoutViews[DataSource.WAHOO] = view.findViewById(R.id.btnWahooLogout)
         logoutViews[DataSource.MYWHOOSH] = view.findViewById(R.id.btnMywhooshLogout)
         logoutViews[DataSource.ZWIFT] = view.findViewById(R.id.btnZwiftLogout)
+        logoutViews[DataSource.KEEP] = view.findViewById(R.id.btnKeepLogout)
 
         // 注销点击 → 确认后清除凭证并刷新
         for ((ds, tv) in logoutViews) {
@@ -113,6 +116,7 @@ class LoginFragment : Fragment() {
         // v8.2.0: MyWhoosh/Zwift 纯API账号密码登录（不走WebView）
         btnViews[DataSource.MYWHOOSH]?.setOnClickListener { (activity as? MainActivity)?.openMywhooshLogin() }
         btnViews[DataSource.ZWIFT]?.setOnClickListener { (activity as? MainActivity)?.openZwiftLogin() }
+        btnViews[DataSource.KEEP]?.setOnClickListener { (activity as? MainActivity)?.openKeepLogin() }
 
         // v8.1: 卡片整体点击 → 触发对应平台登录（登录按钮隐藏保留，功能不变）
         cardViews[DataSource.IGPSPORT] = view.findViewById(R.id.cardIgp)
@@ -127,6 +131,7 @@ class LoginFragment : Fragment() {
         cardViews[DataSource.WAHOO] = view.findViewById(R.id.cardWahoo)
         cardViews[DataSource.MYWHOOSH] = view.findViewById(R.id.cardMywhoosh)
         cardViews[DataSource.ZWIFT] = view.findViewById(R.id.cardZwift)
+        cardViews[DataSource.KEEP] = view.findViewById(R.id.cardKeep)
         for ((ds, cv) in cardViews) {
             cv.setOnClickListener {
                 if (!prefs.isLoggedIn(ds)) {

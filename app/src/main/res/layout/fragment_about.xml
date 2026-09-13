@@ -60,7 +60,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="3dp"
-                        android:text="正式版 v8.2.0"
+                        android:text="正式版 v8.2.1"
                         android:textColor="@color/primary"
                         android:textSize="11sp" />
                 </LinearLayout>
@@ -107,7 +107,9 @@
             app:cardElevation="1dp">
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="📋 更新日志" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v8.2.0 · 本次更新" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v8.2.1 · 本次更新" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="1. 新增数据源 Keep（手机号密码登录，仅下载，自动识别跑步/骑行/徒步运动类型）\n2. 修复自研 FIT 文件缺消息头导致的解析问题（Outbase 上传更稳定）\n3. Outbase 上传节流优化：批量上传更稳、降低风控概率\n4. 后台自动同步数据源扩展至 13 个" android:textSize="12sp" android:textColor="@color/text_primary" android:lineSpacingExtra="2dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v8.2.0" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="1. 新增数据源 MyWhoosh、Zwift（账号密码登录，仅下载）\n2. 佳明登录风控优化：冷却提示 + token 静默续期\n3. 后台自动同步数据源扩展至 12 个" android:textSize="12sp" android:textColor="@color/text_primary" android:lineSpacingExtra="2dp" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v8.1.2" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="关于页新增检查更新与开源软件免责声明，品牌区全新排布，存储卡片新增打开目录" android:textSize="12sp" android:textColor="@color/text_primary" android:lineSpacingExtra="2dp" />
@@ -135,7 +137,7 @@
             app:cardCornerRadius="14dp" app:cardElevation="1dp">
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="鸣谢" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:lineSpacingExtra="3dp" android:text="感谢 iGPSPORT、迈金、黑鸟单车、百锐腾、行者、高驰、佳明、Wahoo、MyWhoosh、Zwift、Outbase 为运动用户提供的数据记录与存储服务" android:textColor="@color/text_secondary" android:textSize="11sp" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:lineSpacingExtra="3dp" android:text="感谢 iGPSPORT、迈金、黑鸟单车、百锐腾、行者、高驰、佳明、Wahoo、MyWhoosh、Zwift、Keep、Outbase 为运动用户提供的数据记录与存储服务" android:textColor="@color/text_secondary" android:textSize="11sp" />
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:lineSpacingExtra="3dp" android:text="感谢以下人员（均为骑行爱称）为软件测试提供的帮助：素甲粉、青岛AUV阿哲、清茶、萧、洪斌大哥、鸽子王腰果、rockozhao、胶州一哥大沽河河长赵铁柱、海参、兰兰大王、。、初夏飞雪bab、心急吃不了热豆付、青山依旧张指导、阿泽阿" android:textColor="@color/text_secondary" android:textSize="11sp" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="鸣谢青岛AUV俱乐部" android:textSize="11sp" android:textStyle="bold" android:textColor="@color/text_primary" />
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="如有问题，欢迎加入 Outbase 俱乐部跟主理人反馈。开发者：多吃两口" android:textColor="@color/text_secondary" android:textSize="11sp" />

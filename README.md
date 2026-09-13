@@ -7,7 +7,7 @@
 [![Android](https://img.shields.io/badge/Platform-Android-green)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-blue)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v8.2.0-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-v8.2.1-brightgreen)]()
 
 一款 Android 运动数据迁移工具：**一次勾选多个数据源平台，统一批量上传到 Outbase**，解决骑行/跑步数据散落在多个平台、难以集中管理的痛点。
 
@@ -25,7 +25,7 @@
 
 - 🎯 **多对一上传** — 一次勾选多个数据来源平台，统一上传到 Outbase，每条记录自动去重
 - ✅ **批量同步** — 支持 1~1000 条记录，可跳过前 N 条历史数据
-- 🔄 **后台自动同步** — WorkManager 调度，系统级保活，跨开机自动恢复，可配置检测间隔，支持全部 12 个来源平台
+- 🔄 **后台自动同步** — WorkManager 调度，系统级保活，跨开机自动恢复，可配置检测间隔，支持全部 13 个来源平台
 - 📋 **详细运行日志** — 全程记录，一键复制，失败原因分类
 - 💾 **同步记忆** — 已上传记录自动记忆，不重复上传；支持"忽略记忆，强制重传"
 - 📅 **仅同步指定日期之前** — 开启后只同步截止日期之前的历史数据，适合回溯旧记录
@@ -73,6 +73,7 @@
 | **Wahoo** | OAuth2 登录 | FIT |
 | **MyWhoosh** | 账号密码登录 | FIT |
 | **Zwift** | 账号密码登录 | FIT |
+| **Keep** | 账号密码登录 | GPX（自动转 FIT 上传） |
 
 ### 同步目标（固定）
 
@@ -182,6 +183,19 @@ cd sync-igpsport-magene-onelap-xingzhe-data-to-outbase
 ---
 
 ## 📋 更新日志
+
+### v8.2.1（2026-09-13）
+
+**已解决**
+- 新增数据源 Keep（手机号密码直接登录，纯 API，仅下载；自动识别跑步/骑行/徒步运动类型，坐标 GCJ-02→WGS-84 转换，自动同步同步支持，正式版仍只上传 Outbase）
+- 修复自研 FIT 文件缺消息头结构导致的解析问题（对齐开发体验版 v7.9.4，Outbase 上传更稳定）
+- Outbase 上传节流优化：每条上传成功后 400ms 间隔，批量上传更稳、降低服务端风控概率
+- 后台自动同步数据源扩展至 13 个（新增 Keep）
+
+**未解决**
+- 佳明中国服务器端响应慢（见已知问题）
+- 百锐腾下载开发中
+- Keep 未开放官方文件上传接口，仅作为数据来源（下载）接入，不支持作为上传目标
 
 ### v8.2.0（2026-09-12）
 
@@ -329,6 +343,7 @@ This app is open-sourced under the MIT License. You are free to view, modify and
 - Wahoo — 智能骑行设备与训练平台 [www.wahoofitness.com](https://www.wahoofitness.com/)
 - MyWhoosh — 室内虚拟骑行平台 [www.mywhoosh.com](https://www.mywhoosh.com/)
 - Zwift — 室内虚拟骑行与训练平台 [www.zwift.com](https://www.zwift.com/)
+- Keep — 运动健身记录与社区平台 [www.gotokeep.com](https://www.gotokeep.com/)
 - Outbase — 运动数据聚合平台 [outbase.cn](https://outbase.cn/)
 
 感谢以下人员（均为骑行爱称）为软件测试提供的帮助：素甲粉、青岛AUV阿哲、清茶、萧、洪斌大哥、鸽子王腰果、rockozhao、胶州一哥大沽河河长赵铁柱、海参、兰兰大王、。。、初夏飞雪bab、心急吃不了热豆付、青山依旧张指导、阿泽阿

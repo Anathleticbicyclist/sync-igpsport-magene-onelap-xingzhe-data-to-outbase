@@ -48,6 +48,7 @@ import com.jichi.ob.api.WahooOAuth2Service
 import com.jichi.ob.api.IgpsportApi
 import com.jichi.ob.api.MageneApi
 import com.jichi.ob.api.MyWhooshApi
+import com.jichi.ob.api.KeepApi
 import com.jichi.ob.api.ZwiftApi
 import com.jichi.ob.api.OutbaseApi
 import com.jichi.ob.api.UploadEngine
@@ -101,6 +102,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var garminApi: GarminApi
     private lateinit var mywhooshApi: MyWhooshApi
     private lateinit var zwiftApi: ZwiftApi
+    private lateinit var keepApi: KeepApi
     private lateinit var corosApi: CorosApi
     private lateinit var wahooApi: WahooApi
     private lateinit var uploadEngine: UploadEngine
@@ -245,6 +247,7 @@ class MainActivity : AppCompatActivity() {
             com.jichi.ob.api.GarminApi.setAppContext(this)  // v8.2.0: 佳明429风控冷却持久化
             mywhooshApi = MyWhooshApi()
             zwiftApi = ZwiftApi()
+            keepApi = KeepApi()
             corosApi = CorosApi()
             wahooApi = WahooApi()
             uploadEngine = UploadEngine(this)
@@ -482,6 +485,57 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    /** v8.2.1: Keep 直接登录——手机号密码原生表单直调 KeepApi（纯API，仅下载源） */
+    internal fun openKeepLogin() {
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 24)
+        }
+        val accountInput = android.widget.EditText(this).apply {
+            hint = "Keep 手机号"
+            inputType = android.text.InputType.TYPE_CLASS_PHONE
+            setText(prefs.getKeepAccount() ?: "")
+        }
+        val passwordInput = android.widget.EditText(this).apply {
+            hint = "Keep 密码"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
+        }
+        layout.addView(accountInput)
+        layout.addView(passwordInput)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("登录 Keep")
+            .setMessage("手机号密码直接登录，Keep 作为数据源（下载运动记录，仅下载）")
+            .setView(layout)
+            .setPositiveButton("登录") { _, _ ->
+                val account = accountInput.text.toString().trim()
+                val password = passwordInput.text.toString()
+                if (account.isEmpty() || password.isEmpty()) {
+                    appendLog("⚠️ 请输入 Keep 手机号和密码")
+                    return@setPositiveButton
+                }
+                prefs.saveKeepAccount(account)
+                appendLog("🔐 Keep直接登录中...")
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val result = keepApi.login(account, password)
+                    runOnUiThread {
+                        if (result != null) {
+                            prefs.saveKeepToken(result.token)
+                            appendLog("✅ Keep登录成功")
+                            fetchUsernameAfterLogin(DataSource.KEEP)
+                        } else {
+                            appendLog("❌ Keep登录失败：账号或密码错误，请重新输入")
+                        }
+                        loginFragment.updateStatus()
+                        try { settingsFragment?.refreshLoginState() } catch (_: Exception) {}
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
     /**
      * v7.5.1: 佳明中国直接登录（模拟garth库mobile SSO流程，不需要WebView）
      * 用邮箱密码直接获取OAuth2 Bearer token，调用connectapi.garmin.cn
@@ -624,7 +678,7 @@ class MainActivity : AppCompatActivity() {
             val platforms = listOf(
                 DataSource.IGPSPORT, DataSource.XINGZHE, DataSource.MAGENE, DataSource.BLACKBIRD,
                 DataSource.BRYTON, DataSource.OUTBASE, DataSource.GARMIN_COM, DataSource.GARMIN_CN,
-                DataSource.COROS_CN, DataSource.COROS_INT, DataSource.WAHOO, DataSource.MYWHOOSH, DataSource.ZWIFT
+                DataSource.COROS_CN, DataSource.COROS_INT, DataSource.WAHOO, DataSource.MYWHOOSH, DataSource.ZWIFT, DataSource.KEEP
             )
             for (ds in platforms) {
                 if (!prefs.isLoggedIn(ds)) continue  // 未登录过的跳过，不发无用请求
@@ -645,6 +699,7 @@ class MainActivity : AppCompatActivity() {
                         DataSource.WAHOO -> wahooApi.getUsername(cred)
                         DataSource.MYWHOOSH -> mywhooshApi.getUsername(cred)
                         DataSource.ZWIFT -> zwiftApi.getUsername(cred)
+                        DataSource.KEEP -> keepApi.getUsername(cred)
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "启动登录检测 ${ds.displayName} 异常: ${e.message}")
@@ -765,6 +820,7 @@ class MainActivity : AppCompatActivity() {
                 DataSource.WAHOO -> wahooApi.getUsername(cred)
                 DataSource.MYWHOOSH -> mywhooshApi.getUsername(cred)
                 DataSource.ZWIFT -> zwiftApi.getUsername(cred)
+                DataSource.KEEP -> keepApi.getUsername(cred)
             }
             if (name != null) {
                 prefs.saveUsername(ds, name)
@@ -1073,6 +1129,7 @@ class MainActivity : AppCompatActivity() {
                 // v8.2.0: Zwift 401 时用 refresh_token 刷新后重试
                 getZwiftActivitiesWithRefresh(cred, prefs.getZwiftPlayerId(), prefs.getZwiftRefreshToken(), skip, limit)
             }
+            DataSource.KEEP -> keepApi.getActivities(cred, skip, limit)
             else -> emptyList()
         }
     }
@@ -1171,6 +1228,10 @@ class MainActivity : AppCompatActivity() {
             DataSource.ZWIFT -> {
                 // v8.2.0: Zwift S3 直链下载（extra=bucket|key），S3 无需 token
                 zwiftApi.downloadFit(record.extra ?: "")
+            }
+            DataSource.KEEP -> {
+                // v8.2.1: Keep 下载轨迹→GPX（extra=run_id），上传引擎自动转 FIT
+                keepApi.downloadGpx(cred, record.extra ?: record.id)
             }
             else -> null
         }

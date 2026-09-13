@@ -29,12 +29,14 @@ enum class DataSource(val displayName: String, val shortName: String) {
     WAHOO("Wahoo", "wo"),
     // v8.2.0 新增：MyWhoosh / Zwift（仅下载数据源）
     MYWHOOSH("MyWhoosh", "mw"),
-    ZWIFT("Zwift", "zf");
+    ZWIFT("Zwift", "zf"),
+    // v8.2.1: Keep（下载数据源，仅下载）
+    KEEP("Keep", "kp");
 
     companion object {
         /** 可作为"来源(下载)"的平台 */
         fun sourcePlatforms(): List<DataSource> =
-            listOf(IGPSPORT, XINGZHE, MAGENE, BLACKBIRD, BRYTON, GARMIN_COM, GARMIN_CN, COROS_CN, COROS_INT, WAHOO, MYWHOOSH, ZWIFT)
+            listOf(IGPSPORT, XINGZHE, MAGENE, BLACKBIRD, BRYTON, GARMIN_COM, GARMIN_CN, COROS_CN, COROS_INT, WAHOO, MYWHOOSH, ZWIFT, KEEP)
         fun fromShortName(s: String): DataSource? = entries.find { it.shortName == s }
     }
 }
@@ -58,7 +60,8 @@ enum class DownloadSupport(val available: Boolean, val note: String) {
     COROS_INT(true, ""),
     WAHOO(true, ""),
     MYWHOOSH(true, ""),
-    ZWIFT(true, "");
+    ZWIFT(true, ""),
+    KEEP(true, "");
 
     companion object {
         fun fromDataSource(ds: DataSource): DownloadSupport = when (ds) {
@@ -74,6 +77,7 @@ enum class DownloadSupport(val available: Boolean, val note: String) {
             DataSource.WAHOO -> WAHOO
             DataSource.MYWHOOSH -> MYWHOOSH
             DataSource.ZWIFT -> ZWIFT
+            DataSource.KEEP -> KEEP
             else -> BRYTON
         }
     }
@@ -93,7 +97,8 @@ enum class UploadSupport(val available: Boolean, val note: String) {
     COROS_INT(false, "正式版仅支持上传到Outbase"),
     WAHOO(false, "正式版仅支持上传到Outbase"),
     MYWHOOSH(false, "正式版仅支持上传到Outbase"),
-    ZWIFT(false, "正式版仅支持上传到Outbase");
+    ZWIFT(false, "正式版仅支持上传到Outbase"),
+    KEEP(false, "正式版仅支持上传到Outbase");
 
     companion object {
         fun fromDataSource(ds: DataSource): UploadSupport = when (ds) {
@@ -110,6 +115,7 @@ enum class UploadSupport(val available: Boolean, val note: String) {
             DataSource.WAHOO -> WAHOO
             DataSource.MYWHOOSH -> MYWHOOSH
             DataSource.ZWIFT -> ZWIFT
+            DataSource.KEEP -> KEEP
         }
     }
 }

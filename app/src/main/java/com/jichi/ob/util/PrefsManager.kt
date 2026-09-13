@@ -172,6 +172,7 @@ class PrefsManager(context: Context) {
         DataSource.WAHOO -> getWahooToken()
         DataSource.MYWHOOSH -> getMywhooshToken()
         DataSource.ZWIFT -> getZwiftToken()
+        DataSource.KEEP -> getKeepToken()
     }
     /** v7.5.9: 保存平台凭证（启动登录检测刷新后更新用） */
     fun saveCredential(ds: DataSource, cred: String) {
@@ -189,6 +190,7 @@ class PrefsManager(context: Context) {
             DataSource.WAHOO -> saveWahooToken(cred)
             DataSource.MYWHOOSH -> saveMywhooshToken(cred)
             DataSource.ZWIFT -> saveZwiftToken(cred)
+            DataSource.KEEP -> saveKeepToken(cred)
         }
     }
     /** v7.5.9: 清除平台凭证（启动登录检测判定失效时用，UI显示未登录） */
@@ -208,6 +210,7 @@ class PrefsManager(context: Context) {
             DataSource.WAHOO -> { e.remove("wahoo_token"); e.remove("wahoo_refresh"); e.remove("wahoo_email") }
             DataSource.MYWHOOSH -> { e.remove("mywhoosh_token"); e.remove("mywhoosh_whoosh_id"); e.remove("mywhoosh_refresh") }
             DataSource.ZWIFT -> { e.remove("zwift_token"); e.remove("zwift_refresh"); e.remove("zwift_player_id") }
+            DataSource.KEEP -> e.remove("keep_token")
         }
         e.remove("username_${ds.shortName}")
         e.apply()
@@ -234,6 +237,13 @@ class PrefsManager(context: Context) {
     fun getZwiftAccount(): String? = prefs.getString("zwift_account", null)
     fun isZwiftLoggedIn(): Boolean = !getZwiftToken().isNullOrEmpty()
 
+    // ===== Keep: 纯API token（v8.2.1 新增，仅下载源）=====
+    fun saveKeepToken(t: String) { prefs.edit().putString("keep_token", t).apply() }
+    fun getKeepToken(): String? = prefs.getString("keep_token", null)
+    fun saveKeepAccount(a: String) { prefs.edit().putString("keep_account", a).apply() }
+    fun getKeepAccount(): String? = prefs.getString("keep_account", null)
+    fun isKeepLoggedIn(): Boolean = !getKeepToken().isNullOrEmpty()
+
     fun isLoggedIn(ds: DataSource): Boolean = when (ds) {
         DataSource.IGPSPORT -> isIgpsportLoggedIn()
         DataSource.XINGZHE -> isXingzheLoggedIn()
@@ -248,6 +258,7 @@ class PrefsManager(context: Context) {
         DataSource.WAHOO -> isWahooLoggedIn()
         DataSource.MYWHOOSH -> isMywhooshLoggedIn()
         DataSource.ZWIFT -> isZwiftLoggedIn()
+        DataSource.KEEP -> isKeepLoggedIn()
     }
 
     // ===== 用户名存储 =====

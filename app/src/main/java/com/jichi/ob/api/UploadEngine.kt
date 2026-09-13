@@ -123,8 +123,19 @@ class UploadEngine(private val context: android.content.Context? = null) {
     ): UploadResult {
         return try {
             // v6.3.5/v6.3.13: Outbase上传——GPX用官方gpx2fit转FIT（与正式版一致，能正确处理时间和心率）
+            // v8.2.1: Keep运动类型修复——官方gpx2fit.js 无法识别 Keep 运动类型（默认骑行），
+            //         Keep 来源直接走自研转换器（自动从 GPX <name> 读 running/cycling/hiking 标记写对 sport）
             val uploadData = if (com.jichi.ob.GpxToFitConverter.isFit(fitData)) {
                 fitData
+            } else if (record.source == DataSource.KEEP) {
+                try {
+                    val f = com.jichi.ob.GpxToFitConverter.convert(fitData)
+                    Log.d(TAG, "Outbase Keep->FIT(自研, 自动识别sport): ${fitData.size} -> ${f.size} bytes")
+                    f
+                } catch (e: Exception) {
+                    Log.w(TAG, "Outbase Keep自研转换失败: ${e.message}")
+                    fitData
+                }
             } else {
                 val officialFit = try {
                     if (outbaseBridge != null) {
@@ -147,6 +158,9 @@ class UploadEngine(private val context: android.content.Context? = null) {
             }
             val fileName = FileNameGenerator.generate(DataSource.OUTBASE, record, "fit")
             val (msg, skipped, _) = outbaseApi.upload(sessionId, null, uploadData, fileName)
+            // v8.2.1: Outbase 服务端处理为异步（"待处理"），大批量秒传易触发服务端限流导致"处理失败"。
+            // 每条成功后节流 400ms，摊平上传频率，降低风控概率。
+            kotlinx.coroutines.delay(400)
             UploadResult(!skipped && msg.contains("成功"), message = msg, skipped = skipped)
         } catch (e: Exception) {
             Log.e(TAG, "Outbase upload error", e)

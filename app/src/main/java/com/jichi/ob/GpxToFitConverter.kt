@@ -127,12 +127,35 @@ object GpxToFitConverter {
         }
     }
 
-    /** 转换GPX字节为FIT字节 */
-    fun convert(gpx: ByteArray): ByteArray {
-        val pts = parseGpx(String(gpx, Charsets.UTF_8))
+    private val NAME_RE = Pattern.compile("<name>([^<]+)</name>")
+
+    /** 从 GPX <name> 里的运动类型标记解析 FIT sport（Keep v7.9.2 写入 "from keep - running/cycling/hiking"）。
+     *  识别失败返回 -1（由调用方决定兜底）。FIT sport 枚举：1=running 2=cycling 17=hiking */
+    private fun detectSportFromGpx(gpx: String): Int {
+        return try {
+            val m = NAME_RE.matcher(gpx)
+            if (!m.find()) return -1
+            val name = m.group(1).lowercase()
+            when {
+                name.contains("cycling") || name.contains("riding") || name.contains("bike") -> 2
+                name.contains("hiking") || name.contains("walking") || name.contains("trail") -> 17
+                name.contains("running") || name.contains("run") -> 1
+                else -> -1
+            }
+        } catch (_: Exception) { -1 }
+    }
+
+    /** 转换GPX字节为FIT字节。sport: FIT sport 枚举（1=跑步 running，2=骑行 cycling，17=徒步 hiking）。
+     *  默认 -1 = 自动从 GPX <name> 运动类型标记解析；解析失败或未标记时按骑行(2)兜底（兼容历史行为） */
+    fun convert(gpx: ByteArray, sport: Int = -1): ByteArray {
+        val gpxStr = String(gpx, Charsets.UTF_8)
+        val pts = parseGpx(gpxStr)
         require(pts.isNotEmpty()) { "GPX无有效轨迹点" }
         val startUnix = pts.firstOrNull { it.ts > 0L }?.ts ?: (System.currentTimeMillis() / 1000)
-        val body = buildFitBody(pts, startUnix)
+        val resolvedSport = if (sport > 0) sport else {
+            detectSportFromGpx(gpxStr).takeIf { it > 0 } ?: 2
+        }
+        val body = buildFitBody(pts, startUnix, resolvedSport)
 
         val header = ByteArray(14)
         header[0] = 14
@@ -156,7 +179,7 @@ object GpxToFitConverter {
         return out.toByteArray()
     }
 
-    private fun buildFitBody(pts: List<TrackPoint>, startUnix: Long): ByteArray {
+    private fun buildFitBody(pts: List<TrackPoint>, startUnix: Long, sport: Int = 2): ByteArray {
         val out = ByteArrayOutputStream()
         // v6.2.7: 若无有效时间戳(行者等GPX time格式不兼容/缺失)，生成递增时间戳避免FIT时间异常被黑鸟拒
         val hasTime = pts[0].ts > 0 && pts.last().ts > 0
@@ -166,19 +189,19 @@ object GpxToFitConverter {
         // --- file_id (local 0) ---
         out.write(DefBuilder(0, 0).f(0, 1, 0x00).f(1, 2, 0x84).f(2, 2, 0x84).f(4, 4, 0x86).build())
         out.write(ByteArrayOutputStream().also { o ->
-            u8(o, 4); u16(o, 255); u16(o, 1); u32(o, fit0 - FIT_EPOCH_OFFSET)
+            u8(o, 0x00); u8(o, 4); u16(o, 255); u16(o, 1); u32(o, fit0 - FIT_EPOCH_OFFSET)
         }.toByteArray())
 
         // --- event timer start (local 1) ---
         out.write(DefBuilder(1, 21).f(0, 4, 0x86).f(1, 1, 0x00).f(2, 1, 0x00).f(3, 1, 0x02).build())
         out.write(ByteArrayOutputStream().also { o ->
-            u32(o, fit0 - FIT_EPOCH_OFFSET); u8(o, 0); u8(o, 0); u8(o, 0)
+            u8(o, 0x01); u32(o, fit0 - FIT_EPOCH_OFFSET); u8(o, 0); u8(o, 0); u8(o, 0)
         }.toByteArray())
 
         // --- device_info (local 2) ---
         out.write(DefBuilder(2, 23).f(0, 1, 0x00).f(1, 2, 0x84).f(253, 4, 0x86).build())
         out.write(ByteArrayOutputStream().also { o ->
-            u8(o, 255); u16(o, 1); u32(o, fit0 - FIT_EPOCH_OFFSET)
+            u8(o, 0x02); u8(o, 255); u16(o, 1); u32(o, fit0 - FIT_EPOCH_OFFSET)
         }.toByteArray())
 
         // --- 统计 ---
@@ -202,10 +225,11 @@ object GpxToFitConverter {
             .f(9, 4, 0x86).f(14, 2, 0x84).f(21, 2, 0x84).f(22, 2, 0x84)
             .f(27, 1, 0x00).f(28, 1, 0x00).f(30, 2, 0x84).build())
         out.write(ByteArrayOutputStream().also { o ->
+            u8(o, 0x03)
             u32(o, fitLast - FIT_EPOCH_OFFSET)
             u32(o, fit0 - FIT_EPOCH_OFFSET)
             u32(o, degToSemicircle(pts[0].lat).toLong()); u32(o, degToSemicircle(pts[0].lon).toLong())
-            u8(o, 2); u8(o, 0)
+            u8(o, sport); u8(o, 0)
             u32(o, durationS * 1000); u32(o, durationS * 1000)
             u32(o, (distM * 100).toLong())
             u16(o, (avgSpeed * 1000).toInt())
@@ -219,6 +243,7 @@ object GpxToFitConverter {
             .f(7, 4, 0x86).f(8, 4, 0x86).f(9, 4, 0x86).f(13, 2, 0x84)
             .f(27, 1, 0x00).f(28, 1, 0x00).build())
         out.write(ByteArrayOutputStream().also { o ->
+            u8(o, 0x04)
             u32(o, fitLast - FIT_EPOCH_OFFSET)
             u32(o, fit0 - FIT_EPOCH_OFFSET)
             u32(o, degToSemicircle(pts[0].lat).toLong()); u32(o, degToSemicircle(pts[0].lon).toLong())
@@ -233,6 +258,7 @@ object GpxToFitConverter {
             .f(0, 4, 0x86).f(1, 4, 0x86).f(2, 1, 0x00).f(3, 1, 0x00)
             .f(4, 1, 0x00).f(5, 1, 0x00).f(6, 4, 0x86).build())
         out.write(ByteArrayOutputStream().also { o ->
+            u8(o, 0x05)
             u32(o, fitLast - FIT_EPOCH_OFFSET)
             u32(o, durationS * 1000)
             u8(o, 1); u8(o, 1); u8(o, 0); u8(o, 0)
@@ -258,6 +284,7 @@ object GpxToFitConverter {
                 if (dt > 0) spd = haversineM(pts[i - 1].lat, pts[i - 1].lon, p.lat, p.lon) / dt
             }
             out.write(ByteArrayOutputStream().also { o ->
+                u8(o, 0x06)
                 u32(o, ts - FIT_EPOCH_OFFSET)
                 u32(o, degToSemicircle(p.lat).toLong()); u32(o, degToSemicircle(p.lon).toLong())
                 u16(o, (p.ele * 5).toInt())
