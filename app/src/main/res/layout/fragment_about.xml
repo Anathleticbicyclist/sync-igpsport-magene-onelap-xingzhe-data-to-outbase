@@ -60,7 +60,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="3dp"
-                        android:text="正式版 v8.4.2"
+                        android:text="正式版 v8.4.3"
                         android:textColor="@color/primary"
                         android:textSize="11sp" />
                 </LinearLayout>
