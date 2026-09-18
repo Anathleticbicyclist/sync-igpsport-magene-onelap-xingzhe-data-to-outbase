@@ -300,17 +300,16 @@ class SyncSettingsFragment : Fragment() {
         }
     }
 
-    /** v8.0.0: 来源网格未登录平台置灰不可点 */
+    /** v8.4.3: 来源网格未登录平台直接隐藏不显示（已登录才展示） */
     private fun updateSourceChips() {
         for (i in 0 until gridSource.childCount) {
             val btn = gridSource.getChildAt(i) as? MaterialButton ?: continue
             val ds = DataSource.fromShortName(btn.tag as? String ?: "") ?: continue
             if (!prefs.isLoggedIn(ds)) {
+                btn.visibility = View.GONE
                 btn.isEnabled = false
-                btn.setBackgroundColor(0xFFE8E8E8.toInt())
-                btn.setTextColor(0xFFB0B0B0.toInt())
-                btn.alpha = 0.7f
             } else {
+                btn.visibility = View.VISIBLE
                 btn.isEnabled = true
                 btn.alpha = 1.0f
                 setButtonSelected(btn, selectedSourceTags.contains(btn.tag as? String ?: ""), btn.tag as? String ?: "")
