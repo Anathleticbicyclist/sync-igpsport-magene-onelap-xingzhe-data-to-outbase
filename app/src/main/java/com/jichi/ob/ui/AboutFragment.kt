@@ -79,6 +79,10 @@ class AboutFragment : Fragment() {
 
         // v8.1.2: 开源软件免责声明超链接 → 弹出双语免责声明弹窗
         view.findViewById<TextView>(R.id.tvDisclaimerLink)?.setOnClickListener { showDisclaimerDialog() }
+        // v8.4.0: 数据合并入口
+        view.findViewById<com.google.android.material.card.MaterialCardView>(R.id.cardMerge)?.setOnClickListener {
+            try { (activity as? com.jichi.ob.MainActivity)?.openMerge() } catch (_: Exception) {}
+        }
     }
 
     /** v8.1.2: 免责声明弹窗（圆角淡蓝边框、内容可滚动、中英双语） */

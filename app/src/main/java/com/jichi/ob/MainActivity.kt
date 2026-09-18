@@ -53,6 +53,10 @@ import com.jichi.ob.api.ZwiftApi
 import com.jichi.ob.api.OutbaseApi
 import com.jichi.ob.api.UploadEngine
 import com.jichi.ob.api.XingzheApi
+import com.jichi.ob.api.CodoonApi
+import com.jichi.ob.api.ZeppApi
+import com.jichi.ob.api.KomootApi
+import com.jichi.ob.api.SuuntoApi
 import com.jichi.ob.model.ActivityRecord
 import com.jichi.ob.model.DownloadSupport
 import com.jichi.ob.model.DataSource
@@ -103,6 +107,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var mywhooshApi: MyWhooshApi
     private lateinit var zwiftApi: ZwiftApi
     private lateinit var keepApi: KeepApi
+    private lateinit var codoonApi: CodoonApi
+    private lateinit var zeppApi: ZeppApi
+    private lateinit var komootApi: KomootApi
+    private lateinit var suuntoApi: SuuntoApi
+    private var lastZeppLoginAttempt = 0L
     private lateinit var corosApi: CorosApi
     private lateinit var wahooApi: WahooApi
     private lateinit var uploadEngine: UploadEngine
@@ -112,9 +121,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var settingsFragment: com.jichi.ob.ui.SyncSettingsFragment
     private lateinit var syncFragment: com.jichi.ob.ui.SyncFragment
     private lateinit var aboutFragment: com.jichi.ob.ui.AboutFragment
+    private lateinit var mergeFragment: com.jichi.ob.ui.MergeFragment
+    private lateinit var createTaskFragment: com.jichi.ob.ui.CreateTaskFragment
 
     private var syncJob: Job? = null
     private var autoSyncJob: Job? = null
+    private var taskJob: Job? = null
+    private var taskActive = false
+    internal val isTaskRunning: Boolean get() = taskActive
     private lateinit var fixWebView: android.webkit.WebView
     private var fixJsReady = false
     private val notifPermissionLauncher = registerForActivityResult(
@@ -211,6 +225,26 @@ class MainActivity : AppCompatActivity() {
                             }
                         } else appendLog("⚠️ Wahoo登录失败: 未捕获到授权码或未配置凭证")
                     }
+                    LoginWebActivity.TYPE_SUUNTO -> {
+                        // v8.3.8: Suunto 返回 OAuth2 授权码 → 换 token（需三凭证）
+                        val clientId = if (com.jichi.ob.api.SuuntoApi.isBuiltinConfigured()) com.jichi.ob.api.SuuntoApi.BUILTIN_CLIENT_ID else prefs.getSuuntoClientId()
+                        val clientSecret = if (com.jichi.ob.api.SuuntoApi.isBuiltinConfigured()) com.jichi.ob.api.SuuntoApi.BUILTIN_CLIENT_SECRET else prefs.getSuuntoClientSecret()
+                        val subKey = suuntoSubscriptionKey()
+                        if (sid.length > 5 && !clientId.isNullOrEmpty() && !clientSecret.isNullOrEmpty() && !subKey.isNullOrEmpty()) {
+                            val code = sid
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                val fresh = suuntoApi.exchangeCode(code, clientId, clientSecret, subKey)
+                                runOnUiThread {
+                                    if (fresh != null) {
+                                        prefs.saveSuuntoToken(fresh.accessToken)
+                                        prefs.saveSuuntoRefresh(fresh.refreshToken)
+                                        appendLog("✅ 松拓登录成功"); fetchUsernameAfterLogin(DataSource.SUUNTO)
+                                    } else appendLog("⚠️ 松拓token换取失败")
+                                    loginFragment.updateStatus()
+                                }
+                            }
+                        } else appendLog("⚠️ 松拓登录失败: 未捕获到授权码或未配置凭证")
+                    }
                 }
                 loginFragment.updateStatus()
             }
@@ -248,6 +282,12 @@ class MainActivity : AppCompatActivity() {
             mywhooshApi = MyWhooshApi()
             zwiftApi = ZwiftApi()
             keepApi = KeepApi()
+            codoonApi = CodoonApi()
+            zeppApi = ZeppApi()
+            komootApi = KomootApi()
+            suuntoApi = SuuntoApi()
+            CodoonApi.gcjConvertEnabled = prefs.isCodoonGcjConvertEnabled()
+            ZeppApi.gcjConvertEnabled = prefs.isZeppGcjConvertEnabled()
             corosApi = CorosApi()
             wahooApi = WahooApi()
             uploadEngine = UploadEngine(this)
@@ -261,8 +301,8 @@ class MainActivity : AppCompatActivity() {
             appendLog("📱 Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             appendLog("📂 存储目录: ${SAVE_DIR.absolutePath}")
             appendLog("💾 已同步记录: ${prefs.getSyncedCount()} 条")
-            // v7.5.9: 启动登录检测（异步，不阻塞界面）
-            checkAllLogins()
+            // v7.5.9: 启动登录检测（异步，不阻塞界面；v8.4.0 对齐开发版，可在登录页关闭自动检测）
+            if (prefs.isAutoCheckLogin()) checkAllLogins()
             // v7.5.7: 显示上次崩溃信息（如果有）
             if (crashFile.exists()) {
                 try {
@@ -274,6 +314,45 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "onCreate failed", e)
         }
+    }
+
+    /** v8.4.0: 平台登录统一分发（登录页程序化卡片调用；对齐开发版 openPlatformLogin） */
+    internal fun openPlatformLogin(ds: DataSource) {
+        when (ds) {
+            DataSource.IGPSPORT -> openLogin(LoginWebActivity.TYPE_IGPSPORT, com.jichi.ob.api.IgpsportApi.LOGIN_URL)
+            DataSource.XINGZHE -> openLogin(LoginWebActivity.TYPE_XINGZHE, com.jichi.ob.api.XingzheApi.LOGIN_URL)
+            DataSource.MAGENE -> openLogin(LoginWebActivity.TYPE_MAGENE, com.jichi.ob.api.MageneApi.LOGIN_URL)
+            DataSource.BLACKBIRD -> openLogin(LoginWebActivity.TYPE_BLACKBIRD, com.jichi.ob.api.BlackbirdApi.LOGIN_URL)
+            DataSource.BRYTON -> openLogin(LoginWebActivity.TYPE_BRYTON, com.jichi.ob.api.BrytonApi.LOGIN_URL)
+            DataSource.OUTBASE -> openLogin(LoginWebActivity.TYPE_OUTBASE, com.jichi.ob.api.OutbaseApi.LOGIN_URL)
+            DataSource.GARMIN_COM -> openLogin(LoginWebActivity.TYPE_GARMIN_COM, com.jichi.ob.api.GarminApi.LOGIN_URL_COM)
+            DataSource.GARMIN_CN -> openGarminCnLogin()
+            DataSource.COROS_CN -> openLogin(LoginWebActivity.TYPE_COROS_CN, com.jichi.ob.api.CorosApi.LOGIN_URL_CN)
+            DataSource.COROS_INT -> openLogin(LoginWebActivity.TYPE_COROS_INT, com.jichi.ob.api.CorosApi.LOGIN_URL_INT)
+            DataSource.WAHOO -> openWahooLogin()
+            DataSource.MYWHOOSH -> openMywhooshLogin()
+            DataSource.ZWIFT -> openZwiftLogin()
+            DataSource.KEEP -> openKeepLogin()
+            DataSource.CODOON -> openCodoonLogin()
+            DataSource.ZEPP -> openZeppLogin()
+            DataSource.KOMOT -> openKomootLogin()
+            DataSource.SUUNTO -> openSuuntoLogin()
+        }
+    }
+
+    /** v8.4.0: 清空佳明风控冷却（登录页详情弹窗调用） */
+    internal fun clearGarminCooldown(ds: DataSource) {
+        if (ds != DataSource.GARMIN_CN && ds != DataSource.GARMIN_COM) return
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("清空风控")
+            .setMessage("若清空风控后强行尝试登录，可能增加冷却时间，你确定清空吗？")
+            .setPositiveButton("确定清空") { _, _ ->
+                com.jichi.ob.api.GarminApi.clearAllCooldownFor(ds)
+                android.widget.Toast.makeText(this, "${ds.displayName}：风控冷却缓存已清空，可重新登录", android.widget.Toast.LENGTH_SHORT).show()
+                appendLog("🧹 ${ds.displayName} 风控冷却已清空")
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     internal fun openLogin(type: String, url: String) {
@@ -536,6 +615,235 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    /** v8.3.8: 咕咚直接登录——手机号+密码（纯API，仅下载源） */
+    internal fun openCodoonLogin() {
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 24)
+        }
+        val accountInput = android.widget.EditText(this).apply {
+            hint = "咕咚 手机号"
+            inputType = android.text.InputType.TYPE_CLASS_PHONE
+            setText(prefs.getCodoonAccount() ?: "")
+        }
+        val passwordInput = android.widget.EditText(this).apply {
+            hint = "咕咚 密码"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
+        }
+        layout.addView(accountInput)
+        layout.addView(passwordInput)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("登录 咕咚")
+            .setMessage("手机号密码直接登录，咕咚作为数据源（下载运动记录）；咕咚官方无开放上传API，正式版仅支持上传到Outbase")
+            .setView(layout)
+            .setPositiveButton("登录") { _, _ ->
+                val account = accountInput.text.toString().trim()
+                val password = passwordInput.text.toString()
+                if (account.isEmpty() || password.isEmpty()) {
+                    appendLog("⚠️ 请输入咕咚手机号和密码")
+                    return@setPositiveButton
+                }
+                prefs.saveCodoonAccount(account)
+                prefs.saveCodoonPassword(password)
+                appendLog("🔐 咕咚直接登录中...")
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val result = codoonApi.login(account, password)
+                    runOnUiThread {
+                        if (result != null) {
+                            prefs.saveCodoonToken(result.token)
+                            prefs.saveCodoonUserId(result.userId)
+                            appendLog("✅ 咕咚登录成功")
+                            fetchUsernameAfterLogin(DataSource.CODOON)
+                        } else {
+                            appendLog("❌ 咕咚登录失败：账号或密码错误，请重新输入")
+                        }
+                        loginFragment.updateStatus()
+                        try { settingsFragment?.refreshLoginState() } catch (_: Exception) {}
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** v8.3.8: Zepp（华米）直接登录——邮箱/手机号+密码（纯API，仅下载源） */
+    internal fun openZeppLogin() {
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 24)
+        }
+        val accountInput = android.widget.EditText(this).apply {
+            hint = "Zepp 邮箱或手机号"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            setText(prefs.getZeppAccount() ?: "")
+        }
+        val passwordInput = android.widget.EditText(this).apply {
+            hint = "Zepp 密码"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
+        }
+        layout.addView(accountInput)
+        layout.addView(passwordInput)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("登录 Zepp")
+            .setMessage("使用 Zepp/小米运动 App 账号邮箱或手机号密码直接登录，Zepp 作为数据源（下载运动记录）；华米无官方开放上传API，正式版仅支持上传到Outbase")
+            .setView(layout)
+            .setPositiveButton("登录") { _, _ ->
+                val account = accountInput.text.toString().trim()
+                val password = passwordInput.text.toString()
+                if (account.isEmpty() || password.isEmpty()) {
+                    appendLog("⚠️ 请输入 Zepp 邮箱/手机号和密码")
+                    return@setPositiveButton
+                }
+                prefs.saveZeppAccount(account)
+                // v8.3.8: 登录节流——华米对连续登录风控严格(429)，10 秒内禁止重复提交
+                val now = System.currentTimeMillis()
+                if (now - lastZeppLoginAttempt < 10_000) {
+                    appendLog("⚠️ Zepp 登录过于频繁，请稍等 10 秒再试（避免触发华米风控）")
+                    return@setPositiveButton
+                }
+                lastZeppLoginAttempt = now
+                appendLog("🔐 Zepp直接登录中...")
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val result = zeppApi.login(account, password)
+                    runOnUiThread {
+                        if (result != null && result.appToken.isNotBlank()) {
+                            prefs.saveZeppToken(result.appToken)
+                            prefs.saveZeppUserId(result.userId)
+                            appendLog("✅ Zepp登录成功")
+                            fetchUsernameAfterLogin(DataSource.ZEPP)
+                        } else {
+                            appendLog("❌ Zepp登录失败：${result?.error ?: "账号或密码错误，请重新输入"}")
+                        }
+                        loginFragment.updateStatus()
+                        try { settingsFragment?.refreshLoginState() } catch (_: Exception) {}
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** v8.3.8: Komoot 直接登录——邮箱+密码（纯API Basic认证，仅下载源） */
+    internal fun openKomootLogin() {
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 24)
+        }
+        val emailInput = android.widget.EditText(this).apply {
+            hint = "Komoot 邮箱"
+            inputType = android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+            setText(prefs.getKomootAccount() ?: "")
+        }
+        val passwordInput = android.widget.EditText(this).apply {
+            hint = "Komoot 密码"
+            inputType = android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
+        }
+        layout.addView(emailInput)
+        layout.addView(passwordInput)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("登录 Komoot")
+            .setMessage("使用 Komoot 官网注册账号的邮箱密码直接登录，Komoot 作为数据源（下载运动记录）；正式版仅支持上传到Outbase")
+            .setView(layout)
+            .setPositiveButton("登录") { _, _ ->
+                val email = emailInput.text.toString().trim()
+                val password = passwordInput.text.toString()
+                if (email.isEmpty() || password.isEmpty()) {
+                    appendLog("⚠️ 请输入 Komoot 邮箱和密码")
+                    return@setPositiveButton
+                }
+                prefs.saveKomootAccount(email)
+                appendLog("🔐 Komoot直接登录中...")
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val result = komootApi.login(email, password)
+                    runOnUiThread {
+                        if (result != null) {
+                            prefs.saveKomootToken(result.token)
+                            prefs.saveUsername(DataSource.KOMOT, result.username)
+                            appendLog("✅ Komoot登录成功")
+                            fetchUsernameAfterLogin(DataSource.KOMOT)
+                        } else {
+                            appendLog("❌ Komoot登录失败：邮箱或密码错误，请重新输入")
+                        }
+                        loginFragment.updateStatus()
+                        try { settingsFragment?.refreshLoginState() } catch (_: Exception) {}
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /**
+     * v8.3.8: Suunto（松拓）登录——OAuth2 授权。
+     * 需要 apizone.suunto.com 注册开发者应用的 client_id/client_secret/subscription_key 三凭证。
+     * ① 若凭证已内置/已保存 → 直接打开 WebView 授权页；
+     * ② 否则先弹对话框填三凭证（仅首次）。
+     */
+    internal fun openSuuntoLogin() {
+        val hasCreds = com.jichi.ob.api.SuuntoApi.isBuiltinConfigured() ||
+            (!prefs.getSuuntoClientId().isNullOrEmpty() && !prefs.getSuuntoClientSecret().isNullOrEmpty() && !prefs.getSuuntoSubscriptionKey().isNullOrEmpty())
+        if (!hasCreds) {
+            // 首次：填三凭证
+            val layout = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                setPadding(48, 24, 48, 24)
+            }
+            val clientIdInput = android.widget.EditText(this).apply {
+                hint = "Client ID"
+                inputType = android.text.InputType.TYPE_CLASS_TEXT
+                setText(prefs.getSuuntoClientId() ?: "")
+            }
+            val clientSecretInput = android.widget.EditText(this).apply {
+                hint = "Client Secret"
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                setText(prefs.getSuuntoClientSecret() ?: "")
+            }
+            val subKeyInput = android.widget.EditText(this).apply {
+                hint = "Subscription Key"
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                setText(prefs.getSuuntoSubscriptionKey() ?: "")
+            }
+            layout.addView(clientIdInput)
+            layout.addView(clientSecretInput)
+            layout.addView(subKeyInput)
+
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("松拓开发者凭证")
+                .setMessage("在 apizone.suunto.com 免费注册开发者应用（个人申请约3-4周审批），到应用详情页复制 Client ID / Client Secret / Subscription Key 三凭证（仅首次填写，仅存本机）")
+                .setView(layout)
+                .setPositiveButton("下一步") { _, _ ->
+                    val cid = clientIdInput.text.toString().trim()
+                    val cs = clientSecretInput.text.toString().trim()
+                    val sk = subKeyInput.text.toString().trim()
+                    if (cid.isEmpty() || cs.isEmpty() || sk.isEmpty()) {
+                        appendLog("⚠️ 请完整填写松拓三个凭证")
+                        return@setPositiveButton
+                    }
+                    prefs.saveSuuntoClientId(cid)
+                    prefs.saveSuuntoClientSecret(cs)
+                    prefs.saveSuuntoSubscriptionKey(sk)
+                    launchSuuntoWebAuth(cid)
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        } else {
+            val cid = if (com.jichi.ob.api.SuuntoApi.isBuiltinConfigured())
+                com.jichi.ob.api.SuuntoApi.BUILTIN_CLIENT_ID else prefs.getSuuntoClientId()!!
+            launchSuuntoWebAuth(cid)
+        }
+    }
+
+    private fun launchSuuntoWebAuth(clientId: String) {
+        appendLog("🔐 打开松拓授权页...")
+        openLogin(LoginWebActivity.TYPE_SUUNTO, suuntoApi.authorizeUrl(clientId))
+    }
+
     /**
      * v7.5.1: 佳明中国直接登录（模拟garth库mobile SSO流程，不需要WebView）
      * 用邮箱密码直接获取OAuth2 Bearer token，调用connectapi.garmin.cn
@@ -669,8 +977,83 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun checkAllLogins() {
+    // ============ v8.4.0 数据合并：全屏覆盖页（裁剪开发版贴纸，仅保留合并+上传Outbase） ============
+    fun openMerge() {
+        val bottomNav = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottomNav)
+        val toolbar = findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+        supportFragmentManager.beginTransaction().show(mergeFragment).commit()
+        bottomNav?.visibility = android.view.View.GONE
+        toolbar?.visibility = android.view.View.GONE
+        appendLog("🗂 进入数据合并")
+    }
+
+    fun closeMerge() {
+        val bottomNav = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottomNav)
+        val toolbar = findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+        supportFragmentManager.beginTransaction().hide(mergeFragment).commit()
+        bottomNav?.visibility = android.view.View.VISIBLE
+        toolbar?.visibility = android.view.View.VISIBLE
+        try { showFragment(syncFragment) } catch (_: Exception) {}
+    }
+
+    /** v8.4.0: 合并页记录分页结果 */
+    data class MergeFetchPage(val records: List<ActivityRecord>, val hasMore: Boolean)
+
+    /**
+     * v8.4.0: 合并页拉取记录（对齐开发版 v8.1.2 分页化）：
+     * - 无日期筛选：只拉最近 1 批（30 条），秒开；
+     * - 指定日期范围：从 skip 开始翻页拉取并过滤，单次最多拉 500 条防卡，hasMore=可能还有更早记录。
+     */
+    suspend fun fetchMergeActivities(source: DataSource, fromDate: String? = null, toDate: String? = null, skipStart: Int = 0): MergeFetchPage = withContext(Dispatchers.IO) {
+        val out = LinkedHashMap<String, ActivityRecord>()
+        var skip = skipStart
+        val page = 30
+        val max = 500
+        var fetched = 0
+        var lastBatchFull = false
+        try {
+            while (fetched < max) {
+                val batch = try {
+                    fetchActivities(source, skip, page)
+                } catch (e: Exception) {
+                    break
+                }
+                if (batch.isEmpty()) { lastBatchFull = false; break }
+                lastBatchFull = batch.size >= page
+                skip += batch.size; fetched += batch.size
+                if (fromDate == null && toDate == null) {
+                    for (r in batch) out[r.id] = r
+                    break
+                }
+                for (r in batch) {
+                    val d = recDay(r.startTime)
+                    if ((fromDate == null || d >= fromDate) && (toDate == null || d <= toDate)) out[r.id] = r
+                }
+                if (batch.size < page) break
+            }
+        } catch (_: Exception) {}
+        val list = out.values.toList()
+        if (fromDate == null && toDate == null) return@withContext MergeFetchPage(list.take(page), lastBatchFull)
+        MergeFetchPage(list, lastBatchFull && fetched >= max)
+    }
+
+    private fun recDay(startTime: String): String = startTime.take(10)
+
+    /** v8.4.0: 合并页下载单条轨迹原始数据（FIT/GPX） */
+    suspend fun downloadForMerge(source: DataSource, record: ActivityRecord): ByteArray? = withContext(Dispatchers.IO) {
+        try {
+            downloadActivity(source, DataSource.OUTBASE, record)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** v8.4.0: 失效平台集合（登录页红标显示，checkAllLogins 填充） */
+    internal val lastInvalidPlatforms = mutableSetOf<DataSource>()
+
+    internal fun checkAllLogins(onDone: ((valid: Int, refreshed: Int, invalid: Int) -> Unit)? = null) {
         appendLog("🔍 启动登录检测中...")
+        lastInvalidPlatforms.clear()
         lifecycleScope.launch(Dispatchers.IO) {
             var valid = 0
             var refreshed = 0
@@ -678,7 +1061,8 @@ class MainActivity : AppCompatActivity() {
             val platforms = listOf(
                 DataSource.IGPSPORT, DataSource.XINGZHE, DataSource.MAGENE, DataSource.BLACKBIRD,
                 DataSource.BRYTON, DataSource.OUTBASE, DataSource.GARMIN_COM, DataSource.GARMIN_CN,
-                DataSource.COROS_CN, DataSource.COROS_INT, DataSource.WAHOO, DataSource.MYWHOOSH, DataSource.ZWIFT, DataSource.KEEP
+                DataSource.COROS_CN, DataSource.COROS_INT, DataSource.WAHOO, DataSource.MYWHOOSH, DataSource.ZWIFT, DataSource.KEEP,
+                DataSource.CODOON, DataSource.ZEPP, DataSource.KOMOT, DataSource.SUUNTO
             )
             for (ds in platforms) {
                 if (!prefs.isLoggedIn(ds)) continue  // 未登录过的跳过，不发无用请求
@@ -700,6 +1084,16 @@ class MainActivity : AppCompatActivity() {
                         DataSource.MYWHOOSH -> mywhooshApi.getUsername(cred)
                         DataSource.ZWIFT -> zwiftApi.getUsername(cred)
                         DataSource.KEEP -> keepApi.getUsername(cred)
+                        DataSource.CODOON -> codoonApi.getUsername(cred, prefs.getCodoonUserId())
+                        DataSource.ZEPP -> zeppApi.getUsername(cred)
+                        DataSource.KOMOT -> {
+                            val email = prefs.getKomootAccount()
+                            if (email.isNullOrEmpty()) null else komootApi.getUsername(email, cred)
+                        }
+                        DataSource.SUUNTO -> {
+                            val sk = suuntoSubscriptionKey()
+                            if (sk.isNullOrEmpty()) null else suuntoApi.getUsername(cred, sk)
+                        }
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "启动登录检测 ${ds.displayName} 异常: ${e.message}")
@@ -749,6 +1143,7 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread { appendLog("🔄 ${ds.displayName} 登录态失效，已自动刷新$suffix") }
                 } else {
                     invalid++
+                    lastInvalidPlatforms.add(ds)
                     if (ds == DataSource.WAHOO || ds == DataSource.COROS_CN || ds == DataSource.COROS_INT) {
                         // v7.6.8: Wahoo/高驰失效时【绝不】清除凭证！
                         // Wahoo: token/refresh_token有复用价值，清除会导致重登走完整OAuth新建token触发10枚上限
@@ -763,6 +1158,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 loginFragment.updateStatus()
                 appendLog("📊 登录检测完成: ${valid}有效 / ${refreshed}刷新成功 / ${invalid}失效")
+                onDone?.invoke(valid, refreshed, invalid)
             }
         }
     }
@@ -799,8 +1195,39 @@ class MainActivity : AppCompatActivity() {
         DataSource.GARMIN_COM, DataSource.GARMIN_CN -> {
             try { garminApi.ensureValidToken(ds, cred) } catch (e: Exception) { null }
         }
+        DataSource.CODOON -> null  // 咕咚无 refresh 端点，需重新登录
+        DataSource.ZEPP -> null  // Zepp 无 refresh 端点，需重新登录
+        DataSource.KOMOT -> {
+            // v8.3.8: Komoot token 为长期令牌，失效时尝试自动重登
+            try {
+                val fresh = komootApi.reLoginIfNeeded()
+                fresh?.token
+            } catch (e: Exception) { null }
+        }
+        DataSource.SUUNTO -> {
+            // v8.3.8: Suunto 用 refresh_token 刷新（轮换令牌，成功后需同时保存新access+refresh）
+            val refresh = prefs.getSuuntoRefresh()
+            val clientId = if (com.jichi.ob.api.SuuntoApi.isBuiltinConfigured()) com.jichi.ob.api.SuuntoApi.BUILTIN_CLIENT_ID else prefs.getSuuntoClientId()
+            val clientSecret = if (com.jichi.ob.api.SuuntoApi.isBuiltinConfigured()) com.jichi.ob.api.SuuntoApi.BUILTIN_CLIENT_SECRET else prefs.getSuuntoClientSecret()
+            val subKey = suuntoSubscriptionKey()
+            if (refresh.isNullOrEmpty() || clientId.isNullOrEmpty() || clientSecret.isNullOrEmpty() || subKey.isNullOrEmpty()) null
+            else {
+                val fresh = suuntoApi.refreshToken(refresh, clientId, clientSecret, subKey)
+                if (fresh != null) {
+                    prefs.saveSuuntoToken(fresh.accessToken)
+                    prefs.saveSuuntoRefresh(fresh.refreshToken)
+                    fresh.accessToken
+                } else null
+            }
+        }
         else -> null
     }
+
+    /** v8.3.8: Suunto Subscription Key（内置优先，其次用户配置） */
+    private fun suuntoSubscriptionKey(): String? =
+        if (com.jichi.ob.api.SuuntoApi.isBuiltinConfigured())
+            com.jichi.ob.api.SuuntoApi.BUILTIN_SUBSCRIPTION_KEY
+        else prefs.getSuuntoSubscriptionKey()
 
     private fun fetchUsernameAfterLogin(ds: DataSource) {
         lifecycleScope.launch(Dispatchers.IO) {
@@ -821,17 +1248,133 @@ class MainActivity : AppCompatActivity() {
                 DataSource.MYWHOOSH -> mywhooshApi.getUsername(cred)
                 DataSource.ZWIFT -> zwiftApi.getUsername(cred)
                 DataSource.KEEP -> keepApi.getUsername(cred)
+                DataSource.CODOON -> codoonApi.getUsername(cred, prefs.getCodoonUserId())
+                DataSource.ZEPP -> zeppApi.getUsername(cred)
+                DataSource.KOMOT -> {
+                    val email = prefs.getKomootAccount()
+                    if (email.isNullOrEmpty()) null else komootApi.getUsername(email, cred)
+                }
+                DataSource.SUUNTO -> {
+                    val sk = suuntoSubscriptionKey()
+                    if (sk.isNullOrEmpty()) null else suuntoApi.getUsername(cred, sk)
+                }
             }
             if (name != null) {
                 prefs.saveUsername(ds, name)
                 appendLog("👤 ${ds.displayName}用户: $name")
                 runOnUiThread { loginFragment.updateStatus() }
             }
+            // v8.4.2: 登录成功后询问是否预拉取运动记录（对齐开发版；写入 ActivityCache 后登录页显示条数）
+            runOnUiThread {
+                try {
+                    if (!isFinishing && !isDestroyed) {
+                        androidx.appcompat.app.AlertDialog.Builder(this@MainActivity)
+                            .setTitle("拉取最近运动记录？")
+                            .setMessage("已登录 ${ds.displayName}。是否立即拉取运动记录到本地缓存？\n（后台执行不影响使用；也可在批量同步时自动写入缓存，登录页将显示平台条数）")
+                            .setPositiveButton("立即拉取") { _, _ -> preloadRecent(ds) }
+                            .setNegativeButton("暂不", null)
+                            .show()
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    // ============ v8.4.2: 预拉取运动记录入库（对齐开发版，登录页条数徽标数据源） ============
+    /** 登录后询问「立即拉取」入口 */
+    fun preloadRecent(ds: DataSource) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val n = preloadAllOf(ds)
+            runOnUiThread {
+                if (n == 0) Toast.makeText(this@MainActivity, "${ds.displayName} 暂无运动记录", Toast.LENGTH_SHORT).show()
+                else if (n > 0) Toast.makeText(this@MainActivity, "已拉取 $n 条 ${ds.displayName} 记录", Toast.LENGTH_LONG).show()
+                try { loginFragment.updateStatus() } catch (_: Exception) {}
+            }
+        }
+    }
+
+    /** 单平台全量拉取核心：返回入库条数（0=无记录，-1=失败） */
+    private suspend fun preloadAllOf(ds: DataSource): Int {
+        try {
+            appendLog("📥 ${ds.displayName} 预拉取运动记录...")
+            val all = mutableListOf<ActivityRecord>()
+            val seen = HashSet<String>()
+            var skip = 0
+            val BATCH = 200
+            val MAX = 2000 // 与缓存库单平台上限一致
+            var batches = 0
+            while (all.size < MAX && batches < 60) {
+                val batch = try { fetchActivities(ds, skip, BATCH) } catch (e: Exception) {
+                    appendLog("⚠️ ${ds.displayName} 第 ${skip + 1} 条起拉取中断: ${e.message}")
+                    break
+                }
+                if (batch.isEmpty()) break
+                val before = seen.size
+                batch.forEach { seen.add(it.id) }
+                if (seen.size == before) break // 游标未前进，收口
+                all.addAll(batch)
+                batches++
+                appendLog("📥 ${ds.displayName} 已拉取 ${all.size} 条...")
+                skip += batch.size
+            }
+            if (all.isEmpty()) { appendLog("⏳ ${ds.displayName} 暂无运动记录"); return 0 }
+            cacheUpsertActivities(ds, all)
+            try {
+                com.jichi.ob.util.ActivityCache.get(this).addPlatformLog(ds.shortName, "导入", "预拉取 ${all.size} 条记录入库")
+            } catch (_: Exception) {}
+            appendLog("💾 ${ds.displayName} 已缓存 ${all.size} 条记录")
+            return all.size
+        } catch (e: Exception) {
+            appendLog("⚠️ ${ds.displayName} 预拉取失败: ${e.message}")
+            return -1
+        }
+    }
+
+    /** v8.4.2: iGPSPORT 批量修复缺失时间（1970 记录 → 下载 FIT 解析回填；对齐开发版） */
+    internal fun repairIgpTimes() {
+        val token = prefs.getIgpsportToken()
+        if (token.isNullOrEmpty()) {
+            Toast.makeText(this, "iGPSPORT 未登录，无法修复时间", Toast.LENGTH_SHORT).show()
+            return
+        }
+        Toast.makeText(this, "开始修复 iGPSPORT 缺失时间（后台进行，查看平台日志）", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val cache = com.jichi.ob.util.ActivityCache.get(this@MainActivity)
+                val bad = cache.queryBadTime(DataSource.IGPSPORT.shortName, 100)
+                if (bad.isEmpty()) {
+                    appendLog("✅ iGPSPORT 无缺失时间记录")
+                    return@launch
+                }
+                appendLog("🔧 修复 iGPSPORT 缺失时间: ${bad.size} 条（下载 FIT 解析，串行）...")
+                var fixed = 0
+                for ((i, rec) in bad.withIndex()) {
+                    if (!isFinishing) {
+                        try {
+                            val fit = igpsportApi.downloadFitFile(token, rec.id, rec.extra)
+                            val ms = igpsportApi.parseFitStartTimeMs(fit)
+                            if (ms > 0) {
+                                cache.setStartTime(DataSource.IGPSPORT.shortName, rec.id, ms)
+                                fixed++
+                                if (fixed % 10 == 0) appendLog("✅ 已修复 $fixed/${bad.size} 条")
+                            }
+                        } catch (e: Exception) { Log.w(TAG, "igp 时间修复单条失败: ${e.message}") }
+                    }
+                    kotlinx.coroutines.delay(300) // 串行节流，避免风控
+                }
+                appendLog("✅ iGPSPORT 时间修复完成: 成功 $fixed / ${bad.size} 条")
+                withContext(Dispatchers.Main) {
+                    try { loginFragment.updateStatus() } catch (_: Exception) {}
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "igp 时间批量修复失败", e)
+                appendLog("❌ iGPSPORT 时间修复失败: ${e.message}")
+            }
         }
     }
 
     // v7.6.2: 日志/进度/同步态统一转发给SyncFragment
-    private fun appendLog(message: String) {
+    internal fun appendLog(message: String) {
         Log.i(TAG, message)
         // v7.6.9: 同步日志持久化，App重开/后台自动同步日志仍可见
         prefs.appendPersistLog(message)
@@ -854,6 +1397,37 @@ class MainActivity : AppCompatActivity() {
     private fun setSyncing(syncing: Boolean) {
         AutoSyncWorker.syncing = syncing
         runOnUiThread { syncFragment.setSyncing(syncing) }
+    }
+
+    // ============ v8.4.2: ActivityCache 接入（对齐开发版：登录页条数/统计依赖此库） ============
+    /** 拉取列表后写入缓存库（IO 线程调用） */
+    private fun cacheUpsertActivities(source: DataSource, acts: List<ActivityRecord>) {
+        if (acts.isEmpty()) return
+        try {
+            val cache = com.jichi.ob.util.ActivityCache.get(this)
+            cache.upsertBatch(source.shortName, acts.map {
+                com.jichi.ob.util.ActivityCache.Entry(
+                    id = it.id, platform = source.shortName,
+                    startTime = if (it.startTimeMs > 0) it.startTimeMs else com.jichi.ob.util.ActivityCache.parseStartTimeMs(it.startTime),
+                    type = it.title, title = it.title, distanceKm = it.distance, durationSec = it.duration,
+                    filename = "", extra = it.extra ?: ""
+                )
+            })
+        } catch (_: Exception) {}
+    }
+
+    /** 下载保存成功后回填文件名 */
+    private fun cacheSetFilename(source: DataSource, id: String, name: String) {
+        try { com.jichi.ob.util.ActivityCache.get(this).setFilename(source.shortName, id, name) } catch (_: Exception) {}
+    }
+
+    /** 平台统计累计 + 平台日志（同步收尾调用） */
+    private fun cacheAddStat(source: DataSource, ok: Int, skip: Int, fail: Int, note: String) {
+        try {
+            val cache = com.jichi.ob.util.ActivityCache.get(this)
+            cache.addPlatformStat(source.shortName, ok, skip, fail, System.currentTimeMillis())
+            if (note.isNotBlank()) cache.addPlatformLog(source.shortName, "导出", note)
+        } catch (_: Exception) {}
     }
 
     internal fun startSync() {
@@ -897,6 +1471,7 @@ class MainActivity : AppCompatActivity() {
                     try {
                         val acts = fetchActivities(source, skip, count)
                         appendLog("📋 [${source.displayName}] 获取到 ${acts.size} 条活动")
+                        cacheUpsertActivities(source, acts)
                         for (a in acts) all.add(ActWrap(source, a))
                     } catch (e: Exception) {
                         appendLog("⚠️ [${source.displayName}] 获取活动失败: ${e.message}")
@@ -906,6 +1481,7 @@ class MainActivity : AppCompatActivity() {
                 if (all.isEmpty()) { appendLog("❌ 未获取到任何活动"); setSyncing(false); return@launch }
                 withContext(Dispatchers.Main) { syncFragment.setProgressIndeterminate(false); syncFragment.setProgressMax(all.size); syncFragment.setProgress(0) }
                 var success = 0; var skipped = 0; var failed = 0
+                val statMap = HashMap<String, IntArray>() // shortName -> [ok, skip, fail]
                 for ((idx, wrap) in all.withIndex()) {
                     if (!isActive) break
                     val source = wrap.source
@@ -939,26 +1515,175 @@ class MainActivity : AppCompatActivity() {
                         FileOutputStream(File(cacheDir, localName)).use { it.write(fileData) }
                         val savedPath = com.jichi.ob.util.FileSaver.saveToDownloads(this@MainActivity, localName, fileData)
                         appendLog("💾 已存: $savedPath (${fileData.size}字节)")
+                        cacheSetFilename(source, act.id, localName)
                     } catch (_: Exception) {}
                     // 上传到 Outbase（固定目标）
                     val t0 = System.currentTimeMillis()
                     appendLog("📤 上传到 ${target.displayName} (${fileData.size}字节)...")
                     val result = uploadEngine.upload(target, obSid, fileData, act, emptyMap())
                     val tCost = System.currentTimeMillis() - t0
-                    if (result.success) { success++; prefs.addSyncedId(syncKey); appendLog("✅ 上传成功(${tCost}ms): ${result.message}") }
-                    else if (result.skipped) { skipped++; prefs.addSyncedId(syncKey); appendLog("⏭️ 已存在跳过: ${result.message}") }
-                    else { failed++; appendLog("❌ 上传失败(${tCost}ms): ${result.message}") }
+                    if (result.success) { success++; prefs.addSyncedId(syncKey); statMap.getOrPut(source.shortName){IntArray(3)}[0]++; appendLog("✅ 上传成功(${tCost}ms): ${result.message}") }
+                    else if (result.skipped) { skipped++; prefs.addSyncedId(syncKey); statMap.getOrPut(source.shortName){IntArray(3)}[1]++; appendLog("⏭️ 已存在跳过: ${result.message}") }
+                    else { failed++; statMap.getOrPut(source.shortName){IntArray(3)}[2]++; appendLog("❌ 上传失败(${tCost}ms): ${result.message}") }
                     withContext(Dispatchers.Main) { syncFragment.setProgress(idx + 1); settingsFragment.setSyncedCount(prefs.getSyncedCount()) }
                     delay(150) // v6.2.4: 缩短条间间隔，减少多活动同步累计等待
                 }
                 appendLog("━━━━━━━━━━━━━━━━━━━━━━")
                 appendLog("📊 同步完成: 成功$success / 跳过$skipped / 失败$failed")
+                for ((p, arr) in statMap) {
+                    DataSource.fromShortName(p)?.let { ds ->
+                        cacheAddStat(ds, arr[0], arr[1], arr[2], "手动同步→Outbase 成功${arr[0]} 跳过${arr[1]} 失败${arr[2]}")
+                    }
+                }
             } catch (e: Exception) { Log.e(TAG, "sync error", e); appendLog("❌ 同步异常: ${e.message}") }
             finally { setSyncing(false) }
         }
     }
 
     internal fun stopSync() { syncJob?.cancel(); appendLog("⏹ 正在停止同步...") }
+
+    // ============ v8.4.0 自动化同步任务（目标固定 Outbase，多来源可多选） ============
+    fun openCreateTask() {
+        val bottomNav = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottomNav)
+        val toolbar = findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+        supportFragmentManager.beginTransaction().show(createTaskFragment).commit()
+        bottomNav?.visibility = android.view.View.GONE
+        toolbar?.visibility = android.view.View.GONE
+    }
+
+    fun closeCreateTask() {
+        val bottomNav = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottomNav)
+        val toolbar = findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+        supportFragmentManager.beginTransaction().hide(createTaskFragment).commit()
+        bottomNav?.visibility = android.view.View.VISIBLE
+        toolbar?.visibility = android.view.View.VISIBLE
+        when (bottomNav?.selectedItemId) {
+            R.id.nav_login -> showFragment(loginFragment)
+            R.id.nav_settings -> showFragment(settingsFragment)
+            R.id.nav_about -> showFragment(aboutFragment)
+            else -> showFragment(syncFragment)
+        }
+        try { syncFragment.refreshTaskState() } catch (_: Exception) {}
+    }
+
+    internal fun refreshTaskUi() {
+        runOnUiThread {
+            try { syncFragment.refreshTaskState() } catch (_: Exception) {}
+        }
+    }
+
+    /** v8.4.0: 运行同步任务（精简正式版：多来源 → Outbase，增量用同步记忆过滤，无缓存库） */
+    internal fun runTask(task: com.jichi.ob.model.SyncTask) {
+        if (syncJob?.isActive == true) {
+            Toast.makeText(this, "批量同步运行中，请先停止", Toast.LENGTH_SHORT).show(); return
+        }
+        if (taskActive) return
+        val sources = task.sources.mapNotNull { DataSource.fromShortName(it) }.distinct()
+        val targets = task.targets.mapNotNull { DataSource.fromShortName(it) }.distinct()
+        if (sources.isEmpty() || targets.isEmpty()) {
+            Toast.makeText(this, "任务未配置来源或目标", Toast.LENGTH_SHORT).show(); return
+        }
+        val validSources = sources.filter { DownloadSupport.fromDataSource(it).available }
+        if (validSources.isEmpty()) {
+            Toast.makeText(this, "所选来源下载功能不可用", Toast.LENGTH_SHORT).show(); return
+        }
+        val notLoggedSrc = validSources.filter { !prefs.isLoggedIn(it) }
+        if (notLoggedSrc.isNotEmpty()) {
+            Toast.makeText(this, "请先登录${notLoggedSrc.joinToString { it.displayName }}", Toast.LENGTH_SHORT).show(); return
+        }
+        val notLoggedTgt = targets.filter { !prefs.isLoggedIn(it) }
+        if (notLoggedTgt.isNotEmpty()) {
+            Toast.makeText(this, "请先登录${notLoggedTgt.joinToString { it.displayName }}", Toast.LENGTH_SHORT).show(); return
+        }
+        appendLog("━━━━━━━━━━━━━━━━━━━━━━")
+        appendLog("📦 任务开始: ${task.name}（${validSources.size}来源 → ${targets.joinToString { it.displayName }}）")
+        taskActive = true
+        refreshTaskUi()
+        taskJob = lifecycleScope.launch(Dispatchers.IO) {
+            var ok = 0; var skipped = 0; var failed = 0
+            val statMap = HashMap<String, IntArray>()
+            try {
+                for (source in validSources) {
+                    if (!taskActive) break
+                    appendLog("📥 [${source.displayName}] 获取活动列表...")
+                    val activities = try { fetchActivities(source, task.skip, task.count) } catch (e: Exception) {
+                        appendLog("❌ ${source.displayName} 获取列表失败: ${e.message}")
+                        failed++; continue
+                    }
+                    appendLog("📋 获取到 ${activities.size} 条活动")
+                    cacheUpsertActivities(source, activities)
+                    flushGarminDebugLogs()
+                    var list = activities
+                    // 增量：跳过已同步记忆
+                    if (task.incremental) {
+                        val before = list.size
+                        list = list.filter { act -> targets.none { prefs.isSynced("${source.shortName}_${act.id}_to_${it.shortName}") } }
+                        if (list.size < before) appendLog("⏭️ 增量模式: 跳过已同步 ${before - list.size} 条，本次同步 ${list.size} 条")
+                    }
+                    for ((i, act) in list.withIndex()) {
+                        if (!taskActive) break
+                        val syncKey = "${source.shortName}_${act.id}_to_${targets.first().shortName}"
+                        if (!task.force && prefs.isSynced(syncKey)) {
+                            skipped++; appendLog("⏭️ [${i+1}/${list.size}] 已同步跳过: ${act.title.take(20)}")
+                            continue
+                        }
+                        appendLog("⬇️ [${i+1}/${list.size}] 下载: ${act.title.take(20)} id=${act.id} (${"%.1f".format(act.distance)}km)")
+                        val fileData = try { downloadActivity(source, targets.first(), act) } catch (e: Exception) {
+                            appendLog("❌ 下载失败: ${e.message}"); failed++; continue
+                        }
+                        if (fileData == null || fileData.size < 100) {
+                            appendLog("❌ 文件数据无效"); failed++; continue
+                        }
+                        val ext = if (isFit(fileData)) "fit" else "gpx"
+                        val localName = FileNameGenerator.generate(source, act, ext)
+                        try {
+                            FileOutputStream(File(cacheDir, localName)).use { it.write(fileData) }
+                            val savedPath = com.jichi.ob.util.FileSaver.saveToDownloads(this@MainActivity, localName, fileData)
+                            appendLog("💾 已存: $savedPath (${fileData.size}字节)")
+                            cacheSetFilename(source, act.id, localName)
+                        } catch (_: Exception) {}
+                        for (target in targets) {
+                            if (!taskActive) break
+                            val t0 = System.currentTimeMillis()
+                            appendLog("📤 上传到 ${target.displayName} (${fileData.size}字节)...")
+                            val cred = prefs.getCredential(target)
+                            val result = if (cred != null) uploadEngine.upload(target, cred, fileData, act, emptyMap())
+                            else com.jichi.ob.api.UploadEngine.UploadResult(success = false, skipped = false, message = "登录态无效")
+                            val tCost = System.currentTimeMillis() - t0
+                            val k = "${source.shortName}_${act.id}_to_${target.shortName}"
+                            if (result.success) { ok++; prefs.addSyncedId(k); statMap.getOrPut(source.shortName){IntArray(3)}[0]++; appendLog("✅ 上传成功(${tCost}ms): ${result.message}") }
+                            else if (result.skipped) { skipped++; prefs.addSyncedId(k); statMap.getOrPut(source.shortName){IntArray(3)}[1]++; appendLog("⏭️ 已存在跳过: ${result.message}") }
+                            else { failed++; statMap.getOrPut(source.shortName){IntArray(3)}[2]++; appendLog("❌ 上传失败(${tCost}ms): ${result.message}") }
+                        }
+                        delay(150)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "task sync error", e)
+                appendLog("❌ 任务异常: ${e.message}")
+            } finally {
+                taskActive = false
+                prefs.upsertTask(task.copyRun(ok, skipped, failed))
+                appendLog("━━━━━━━━━━━━━━━━━━━━━━")
+                appendLog("📦 任务完成: 成功$ok / 跳过$skipped / 失败$failed")
+                for ((p, arr) in statMap) {
+                    DataSource.fromShortName(p)?.let { ds ->
+                        cacheAddStat(ds, arr[0], arr[1], arr[2], "任务「${task.name}」成功${arr[0]} 跳过${arr[1]} 失败${arr[2]}")
+                    }
+                }
+                runOnUiThread {
+                    refreshTaskUi()
+                }
+            }
+        }
+    }
+
+    internal fun stopTask() {
+        taskJob?.cancel()
+        taskActive = false
+        appendLog("⏹ 正在停止任务...")
+        refreshTaskUi()
+    }
 
     /**
      * v6.2.4: 百锐腾上传 —— WebView 真实文件选择通道
@@ -1130,6 +1855,13 @@ class MainActivity : AppCompatActivity() {
                 getZwiftActivitiesWithRefresh(cred, prefs.getZwiftPlayerId(), prefs.getZwiftRefreshToken(), skip, limit)
             }
             DataSource.KEEP -> keepApi.getActivities(cred, skip, limit)
+            DataSource.CODOON -> codoonApi.getActivities(cred, prefs.getCodoonUserId() ?: "", skip, limit)
+            DataSource.ZEPP -> zeppApi.getActivities(cred, prefs.getZeppUserId() ?: "", skip, limit)
+            DataSource.KOMOT -> {
+                val email = prefs.getKomootAccount()
+                if (email.isNullOrEmpty()) emptyList() else komootApi.getActivities(email, cred, skip, limit)
+            }
+            DataSource.SUUNTO -> suuntoApi.getActivities(cred, suuntoSubscriptionKey() ?: "", skip, limit)
             else -> emptyList()
         }
     }
@@ -1233,6 +1965,23 @@ class MainActivity : AppCompatActivity() {
                 // v8.2.1: Keep 下载轨迹→GPX（extra=run_id），上传引擎自动转 FIT
                 keepApi.downloadGpx(cred, record.extra ?: record.id)
             }
+            DataSource.CODOON -> {
+                // v8.3.8: 咕咚下载轨迹→GPX（extra=route_id）
+                codoonApi.downloadGpx(cred, record.extra ?: record.id)
+            }
+            DataSource.ZEPP -> {
+                // v8.3.8: Zepp 下载轨迹→GPX（id=trackid，extra=source）
+                zeppApi.downloadGpx(cred, record.id, record.extra ?: "")
+            }
+            DataSource.KOMOT -> {
+                // v8.3.8: Komoot 下载轨迹→GPX（extra=tour id），国际平台 WGS-84 无需坐标转换
+                val email = prefs.getKomootAccount()
+                if (email.isNullOrEmpty()) null else komootApi.downloadGpx(email, cred, record.extra ?: record.id)
+            }
+            DataSource.SUUNTO -> {
+                // v8.3.8: Suunto 下载轨迹→FIT（国际平台 WGS-84，无需坐标转换）
+                suuntoApi.download(cred, suuntoSubscriptionKey() ?: "", record.extra ?: record.id, gpx = false)
+            }
             else -> null
         }
         return data
@@ -1286,11 +2035,15 @@ class MainActivity : AppCompatActivity() {
         settingsFragment = com.jichi.ob.ui.SyncSettingsFragment()
         syncFragment = com.jichi.ob.ui.SyncFragment()
         aboutFragment = com.jichi.ob.ui.AboutFragment()
+        mergeFragment = com.jichi.ob.ui.MergeFragment()
+        createTaskFragment = com.jichi.ob.ui.CreateTaskFragment()
         supportFragmentManager.beginTransaction()
             .add(R.id.fragmentContainer, loginFragment, "login")
             .add(R.id.fragmentContainer, settingsFragment, "settings").hide(settingsFragment)
             .add(R.id.fragmentContainer, syncFragment, "sync").hide(syncFragment)
             .add(R.id.fragmentContainer, aboutFragment, "about").hide(aboutFragment)
+            .add(R.id.fragmentContainer, mergeFragment, "merge").hide(mergeFragment)
+            .add(R.id.fragmentContainer, createTaskFragment, "createtask").hide(createTaskFragment)
             .commit()
         val bottomNav = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottomNav)
         bottomNav.setOnItemSelectedListener { item ->
@@ -1306,7 +2059,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showFragment(target: androidx.fragment.app.Fragment) {
-        val others = listOf(loginFragment, settingsFragment, syncFragment, aboutFragment).filter { it !== target }
+        val others = listOf(loginFragment, settingsFragment, syncFragment, aboutFragment, mergeFragment, createTaskFragment).filter { it !== target }
         val tr = supportFragmentManager.beginTransaction()
         for (o in others) tr.hide(o)
         tr.show(target).commit()

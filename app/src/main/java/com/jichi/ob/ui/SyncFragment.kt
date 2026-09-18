@@ -10,6 +10,7 @@ import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -20,6 +21,7 @@ import com.google.android.material.slider.Slider
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.jichi.ob.MainActivity
 import com.jichi.ob.R
+import com.jichi.ob.model.DataSource
 import com.jichi.ob.util.PrefsManager
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -45,6 +47,9 @@ class SyncFragment : Fragment() {
     private var statFail: TextView? = null
     private var statBar: View? = null
     private var cntOk = 0
+    // v8.4.0: 自动化任务区
+    private var containerTasks: LinearLayout? = null
+    private var tvTaskHint: TextView? = null
     private var cntSkip = 0
     private var cntFail = 0
     // v8.2: 按钮跑马灯呼吸动画 + 暂停滚动
@@ -107,6 +112,12 @@ class SyncFragment : Fragment() {
             tvAutoInterval.text = "${sec / 60}分钟"
         }
 
+        // v8.4.0: 新建任务入口 + 任务区
+        view.findViewById<TextView>(R.id.btnGoCreate)?.setOnClickListener {
+            (activity as? MainActivity)?.openCreateTask()
+        }
+        refreshTaskState()
+
         tvLogReady = true
         flushPendingLogs()
         // v7.6.9: 加载持久化日志（自动同步/历史同步记录），App重开仍可见，避免"假同步"无日志
@@ -121,6 +132,127 @@ class SyncFragment : Fragment() {
             }
         } catch (_: Exception) {}
     }
+
+    /** v8.4.0: 刷新任务区（互斥：任务运行中批量同步按钮置灰） */
+    fun refreshTaskState() {
+        val view = view ?: return
+        if (containerTasks == null) containerTasks = view.findViewById(R.id.containerTasks)
+        if (tvTaskHint == null) tvTaskHint = view.findViewById(R.id.tvTaskHint)
+        val container = containerTasks ?: return
+        try {
+            val tasks = prefs.getTasks()
+            tvTaskHint?.text = "${tasks.size} 个任务"
+            container.removeAllViews()
+            val act = activity as? MainActivity
+            val running = act?.isTaskRunning == true
+            for (task in tasks) {
+                container.addView(taskCard(task, running), LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            }
+            if (tasks.isEmpty()) {
+                container.addView(TextView(requireContext()).apply {
+                    text = "还没有任务。点击下方「＋ 新建任务」创建"
+                    textSize = 12f
+                    setTextColor(requireContext().getColor(R.color.text_secondary))
+                    setPadding(0, dpTask(6f), 0, dpTask(2f))
+                })
+            }
+            val btnS = btnSync
+            btnS?.isEnabled = !running
+            btnS?.alpha = if (running) 0.4f else 1f
+            if (running) btnS?.text = "⏳ 任务运行中..." else if (btnS?.text?.contains("同步中") != true) btnS?.text = "🚴 开始同步"
+        } catch (_: Exception) {}
+    }
+
+    private fun taskCard(task: com.jichi.ob.model.SyncTask, anyRunning: Boolean): com.google.android.material.card.MaterialCardView {
+        val ctx = requireContext()
+        val card = com.google.android.material.card.MaterialCardView(ctx).apply {
+            radius = dpTask(12f).toFloat()
+            elevation = 0f
+            strokeWidth = dpTask(1f)
+            setStrokeColor(ctx.getColor(if (task.enabled) R.color.primary_light else R.color.divider))
+            setCardBackgroundColor(android.graphics.Color.WHITE)
+        }
+        val inner = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpTask(10f), dpTask(8f), dpTask(10f), dpTask(8f))
+        }
+        // 第一行：名称 + 运行按钮
+        val row1 = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
+        row1.addView(TextView(ctx).apply {
+            text = task.name
+            textSize = 13f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setTextColor(ctx.getColor(R.color.text_primary))
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        val runBtn = TextView(ctx).apply {
+            text = if (anyRunning) "运行中…" else "▶ 运行"
+            textSize = 11f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(ctx.getColor(R.color.white))
+            setBackgroundResource(R.drawable.primary_btn_bg)
+            setPadding(dpTask(10f), dpTask(4f), dpTask(10f), dpTask(4f))
+            isClickable = !anyRunning
+            if (!anyRunning) setOnClickListener { (activity as? MainActivity)?.runTask(task) }
+        }
+        row1.addView(runBtn)
+        inner.addView(row1)
+        // 第二行：链路信息
+        inner.addView(TextView(ctx).apply {
+            val src = task.sources.mapNotNull { DataSource.fromShortName(it) }.joinToString("、") { it.displayName }
+            val tgt = task.targets.mapNotNull { DataSource.fromShortName(it) }.joinToString("、") { it.displayName }
+            text = "$src  →  $tgt"
+            textSize = 11f
+            setTextColor(ctx.getColor(R.color.text_secondary))
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dpTask(3f) })
+        // 第三行：增量/强制/自动 + 最近运行 + 删除
+        val row3 = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
+        row3.addView(TextView(ctx).apply {
+            text = buildString {
+                if (task.incremental) append("增量")
+                if (task.force) { if (isNotEmpty()) append("·"); append("强制重传") }
+                if (task.autoSync) { if (isNotEmpty()) append("·"); append("自动") }
+                if (isEmpty()) append("全量")
+            }
+            textSize = 10f
+            setTextColor(ctx.getColor(R.color.log_info))
+        })
+        row3.addView(TextView(ctx).apply {
+            text = "  最近: " + when {
+                task.lastRunOk + task.lastRunSkip + task.lastRunFail == 0 -> "未运行"
+                else -> "成功${task.lastRunOk} 跳过${task.lastRunSkip} 失败${task.lastRunFail}"
+            }
+            textSize = 10f
+            setTextColor(ctx.getColor(R.color.text_secondary))
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        val delBtn = TextView(ctx).apply {
+            text = "🗑"
+            textSize = 12f
+            setTextColor(ctx.getColor(R.color.log_error))
+            setPadding(dpTask(8f), dpTask(2f), dpTask(2f), dpTask(2f))
+            setOnClickListener {
+                androidx.appcompat.app.AlertDialog.Builder(ctx)
+                    .setTitle("删除任务")
+                    .setMessage("确定删除任务「${task.name}」吗？已同步的记录会保留。")
+                    .setPositiveButton("删除") { _, _ ->
+                        prefs.deleteTask(task.id)
+                        refreshTaskState()
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+            }
+        }
+        row3.addView(delBtn)
+        inner.addView(row3, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dpTask(4f) })
+        card.addView(inner)
+        return card
+    }
+
+    private fun dpTask(v: Float): Int = (v * resources.displayMetrics.density).toInt()
 
     private fun flushPendingLogs() {
         if (!tvLogReady) return

@@ -7,7 +7,7 @@
 [![Android](https://img.shields.io/badge/Platform-Android-green)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-blue)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v8.2.1-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-v8.4.3-brightgreen)]()
 
 一款 Android 运动数据迁移工具：**一次勾选多个数据源平台，统一批量上传到 Outbase**，解决骑行/跑步数据散落在多个平台、难以集中管理的痛点。
 
@@ -74,6 +74,10 @@
 | **MyWhoosh** | 账号密码登录 | FIT |
 | **Zwift** | 账号密码登录 | FIT |
 | **Keep** | 账号密码登录 | GPX（自动转 FIT 上传） |
+| **咕咚** | 手机号密码登录 | GPX（自动转 FIT 上传） |
+| **Zepp** | 邮箱/手机号密码登录 | GPX（自动转 FIT 上传） |
+| **Komoot** | 邮箱密码登录 | GPX（自动转 FIT 上传） |
+| **松拓** | OAuth2 授权（需自行申请开发者凭证） | FIT |
 
 ### 同步目标（固定）
 
@@ -101,6 +105,8 @@
 |:----|:--------|:----|:----|
 | **佳明中国服务器慢** | 佳明中国作为来源 | 佳明中国服务器端响应慢，单条下载/上传约 30~60 秒属正常现象 | 服务器端限制，功能正常 |
 | **百锐腾下载开发中** | 百锐腾作为来源 | 百锐腾下载功能开发中，同步时会自动跳过 | 开发中 |
+| **松拓需自填凭证** | 松拓作为来源 | 松拓官方要求开发者应用凭证（Client ID/Secret/Subscription Key），需在 apizone.suunto.com 自行申请后填写 | 平台限制 |
+| **咕咚/Zepp/Komoot 为 GPX** | 作为来源 | 该三平台数据为 GPX 格式，上传 Outbase 时自动转换为 FIT，部分运动类型可能被归为骑行 | 已知问题 |
 
 ---
 
@@ -183,6 +189,31 @@ cd sync-igpsport-magene-onelap-xingzhe-data-to-outbase
 ---
 
 ## 📋 更新日志
+
+### v8.4.3（2026-09-19）
+
+**已解决**
+- 佳明风控登录优化：新增官方老版直连通道（OAuth1），绕开频繁登录每日限次与按钮风控
+- 登录页新增「清空风控冷却」入口；登录失败/两步验证弹窗提醒，不再静默
+- 冷却缓存不再硬拦截登录，登录成功自动清除
+
+### v8.4.2（2026-09-18）
+
+**已解决**
+- 登录页能力对齐开发体验版：已同步条数徽标、累计统计、最近记录、平台同步日志
+- 后台新增本地数据库（活动缓存/平台统计/同步日志），支持记录中心能力
+- 数据合并与自动化任务接入；首页同步目标固定 Outbase，多来源多选批量上传
+
+### v8.3.8（2026-09-18）
+
+**已解决**
+- 新增数据源：咕咚、Zepp、Komoot、松拓（登录方式与开发体验版一致，仅下载，正式版仍只上传 Outbase）
+- 后台自动同步数据源扩展至 17 个
+- 对齐开发体验版登录与同步逻辑，体验优化
+
+**未解决**
+- 松拓需自行在 apizone.suunto.com 申请开发者凭证后登录
+- 咕咚/Zepp/Komoot 为 GPX 数据，上传 Outbase 自动转 FIT，部分运动类型可能归为骑行
 
 ### v8.2.1（2026-09-13）
 

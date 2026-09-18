@@ -11,7 +11,8 @@ data class ActivityRecord(
     val distance: Double,   // km
     val duration: Int,      // seconds
     val source: DataSource,
-    var extra: String? = null  // 平台附加信息
+    var extra: String? = null,  // 平台附加信息
+    var startTimeMs: Long = 0L  // v8.3.8: 平台直传的毫秒时间戳（最准；0 表示需从 startTime 字符串解析）
 )
 
 enum class DataSource(val displayName: String, val shortName: String) {
@@ -31,12 +32,17 @@ enum class DataSource(val displayName: String, val shortName: String) {
     MYWHOOSH("MyWhoosh", "mw"),
     ZWIFT("Zwift", "zf"),
     // v8.2.1: Keep（下载数据源，仅下载）
-    KEEP("Keep", "kp");
+    KEEP("Keep", "kp"),
+    // v8.3.8: 咕咚/Zepp/Komoot/松拓（对齐开发版 v8.3.3，仅下载数据源；正式版只上传Outbase）
+    CODOON("咕咚", "cd"),
+    ZEPP("Zepp", "zp"),
+    KOMOT("Komoot", "kt"),
+    SUUNTO("松拓", "su");
 
     companion object {
         /** 可作为"来源(下载)"的平台 */
         fun sourcePlatforms(): List<DataSource> =
-            listOf(IGPSPORT, XINGZHE, MAGENE, BLACKBIRD, BRYTON, GARMIN_COM, GARMIN_CN, COROS_CN, COROS_INT, WAHOO, MYWHOOSH, ZWIFT, KEEP)
+            listOf(IGPSPORT, XINGZHE, MAGENE, BLACKBIRD, BRYTON, GARMIN_COM, GARMIN_CN, COROS_CN, COROS_INT, WAHOO, MYWHOOSH, ZWIFT, KEEP, CODOON, ZEPP, KOMOT, SUUNTO)
         fun fromShortName(s: String): DataSource? = entries.find { it.shortName == s }
     }
 }
@@ -61,7 +67,11 @@ enum class DownloadSupport(val available: Boolean, val note: String) {
     WAHOO(true, ""),
     MYWHOOSH(true, ""),
     ZWIFT(true, ""),
-    KEEP(true, "");
+    KEEP(true, ""),
+    CODOON(true, ""),
+    ZEPP(true, ""),
+    KOMOT(true, ""),
+    SUUNTO(true, "");
 
     companion object {
         fun fromDataSource(ds: DataSource): DownloadSupport = when (ds) {
@@ -78,6 +88,10 @@ enum class DownloadSupport(val available: Boolean, val note: String) {
             DataSource.MYWHOOSH -> MYWHOOSH
             DataSource.ZWIFT -> ZWIFT
             DataSource.KEEP -> KEEP
+            DataSource.CODOON -> CODOON
+            DataSource.ZEPP -> ZEPP
+            DataSource.KOMOT -> KOMOT
+            DataSource.SUUNTO -> SUUNTO
             else -> BRYTON
         }
     }
@@ -98,7 +112,11 @@ enum class UploadSupport(val available: Boolean, val note: String) {
     WAHOO(false, "正式版仅支持上传到Outbase"),
     MYWHOOSH(false, "正式版仅支持上传到Outbase"),
     ZWIFT(false, "正式版仅支持上传到Outbase"),
-    KEEP(false, "正式版仅支持上传到Outbase");
+    KEEP(false, "正式版仅支持上传到Outbase"),
+    CODOON(false, "正式版仅支持上传到Outbase"),
+    ZEPP(false, "正式版仅支持上传到Outbase"),
+    KOMOT(false, "正式版仅支持上传到Outbase"),
+    SUUNTO(false, "正式版仅支持上传到Outbase");
 
     companion object {
         fun fromDataSource(ds: DataSource): UploadSupport = when (ds) {
@@ -116,6 +134,10 @@ enum class UploadSupport(val available: Boolean, val note: String) {
             DataSource.MYWHOOSH -> MYWHOOSH
             DataSource.ZWIFT -> ZWIFT
             DataSource.KEEP -> KEEP
+            DataSource.CODOON -> CODOON
+            DataSource.ZEPP -> ZEPP
+            DataSource.KOMOT -> KOMOT
+            DataSource.SUUNTO -> SUUNTO
         }
     }
 }

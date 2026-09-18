@@ -173,6 +173,10 @@ class PrefsManager(context: Context) {
         DataSource.MYWHOOSH -> getMywhooshToken()
         DataSource.ZWIFT -> getZwiftToken()
         DataSource.KEEP -> getKeepToken()
+        DataSource.CODOON -> getCodoonToken()
+        DataSource.ZEPP -> getZeppToken()
+        DataSource.KOMOT -> getKomootToken()
+        DataSource.SUUNTO -> getSuuntoToken()
     }
     /** v7.5.9: 保存平台凭证（启动登录检测刷新后更新用） */
     fun saveCredential(ds: DataSource, cred: String) {
@@ -191,6 +195,10 @@ class PrefsManager(context: Context) {
             DataSource.MYWHOOSH -> saveMywhooshToken(cred)
             DataSource.ZWIFT -> saveZwiftToken(cred)
             DataSource.KEEP -> saveKeepToken(cred)
+            DataSource.CODOON -> saveCodoonToken(cred)
+            DataSource.ZEPP -> saveZeppToken(cred)
+            DataSource.KOMOT -> saveKomootToken(cred)
+            DataSource.SUUNTO -> saveSuuntoToken(cred)
         }
     }
     /** v7.5.9: 清除平台凭证（启动登录检测判定失效时用，UI显示未登录） */
@@ -211,6 +219,10 @@ class PrefsManager(context: Context) {
             DataSource.MYWHOOSH -> { e.remove("mywhoosh_token"); e.remove("mywhoosh_whoosh_id"); e.remove("mywhoosh_refresh") }
             DataSource.ZWIFT -> { e.remove("zwift_token"); e.remove("zwift_refresh"); e.remove("zwift_player_id") }
             DataSource.KEEP -> e.remove("keep_token")
+            DataSource.CODOON -> { e.remove("codoon_token"); e.remove("codoon_account"); e.remove("codoon_user_id") }
+            DataSource.ZEPP -> { e.remove("zepp_token"); e.remove("zepp_account"); e.remove("zepp_user_id") }
+            DataSource.KOMOT -> { e.remove("komoot_token"); e.remove("komoot_account") }
+            DataSource.SUUNTO -> { e.remove("suunto_token"); e.remove("suunto_refresh"); e.remove("suunto_subscription_key"); e.remove("suunto_client_id"); e.remove("suunto_client_secret") }
         }
         e.remove("username_${ds.shortName}")
         e.apply()
@@ -244,6 +256,50 @@ class PrefsManager(context: Context) {
     fun getKeepAccount(): String? = prefs.getString("keep_account", null)
     fun isKeepLoggedIn(): Boolean = !getKeepToken().isNullOrEmpty()
 
+    // ===== 咕咚 Codoon: 纯API token（v8.3.8 新增，仅下载源）=====
+    fun saveCodoonToken(t: String) { prefs.edit().putString("codoon_token", t).apply() }
+    fun getCodoonToken(): String? = prefs.getString("codoon_token", null)
+    fun saveCodoonAccount(a: String) { prefs.edit().putString("codoon_account", a).apply() }
+    fun getCodoonAccount(): String? = prefs.getString("codoon_account", null)
+    fun saveCodoonUserId(uid: String) { prefs.edit().putString("codoon_user_id", uid).apply() }
+    fun getCodoonUserId(): String? = prefs.getString("codoon_user_id", null)
+    fun saveCodoonPassword(p: String) { prefs.edit().putString("codoon_password", p).apply() }
+    fun getCodoonPassword(): String? = prefs.getString("codoon_password", null)
+    fun isCodoonLoggedIn(): Boolean = !getCodoonToken().isNullOrEmpty()
+    fun isCodoonGcjConvertEnabled(): Boolean = prefs.getBoolean("codoon_gcj_convert", false)
+    fun setCodoonGcjConvertEnabled(b: Boolean) = prefs.edit().putBoolean("codoon_gcj_convert", b).apply()
+
+    // ===== Zepp 华米: 纯API app_token（v8.3.8 新增，仅下载源）=====
+    fun saveZeppToken(t: String) { prefs.edit().putString("zepp_token", t).apply() }
+    fun getZeppToken(): String? = prefs.getString("zepp_token", null)
+    fun saveZeppAccount(a: String) { prefs.edit().putString("zepp_account", a).apply() }
+    fun getZeppAccount(): String? = prefs.getString("zepp_account", null)
+    fun saveZeppUserId(uid: String) { prefs.edit().putString("zepp_user_id", uid).apply() }
+    fun getZeppUserId(): String? = prefs.getString("zepp_user_id", null)
+    fun isZeppLoggedIn(): Boolean = !getZeppToken().isNullOrEmpty()
+    fun isZeppGcjConvertEnabled(): Boolean = prefs.getBoolean("zepp_gcj_convert", false)
+    fun setZeppGcjConvertEnabled(b: Boolean) = prefs.edit().putBoolean("zepp_gcj_convert", b).apply()
+
+    // ===== Komoot: 纯API token（v8.3.8 新增，仅下载源）=====
+    fun saveKomootToken(t: String) { prefs.edit().putString("komoot_token", t).apply() }
+    fun getKomootToken(): String? = prefs.getString("komoot_token", null)
+    fun saveKomootAccount(a: String) { prefs.edit().putString("komoot_account", a).apply() }
+    fun getKomootAccount(): String? = prefs.getString("komoot_account", null)
+    fun isKomootLoggedIn(): Boolean = !getKomootToken().isNullOrEmpty()
+
+    // ===== Suunto 松拓: OAuth2（v8.3.8 新增，仅下载源；凭证三件套）=====
+    fun saveSuuntoToken(t: String) { prefs.edit().putString("suunto_token", t).apply() }
+    fun getSuuntoToken(): String? = prefs.getString("suunto_token", null)
+    fun saveSuuntoRefresh(r: String) { prefs.edit().putString("suunto_refresh", r).apply() }
+    fun getSuuntoRefresh(): String? = prefs.getString("suunto_refresh", null)
+    fun saveSuuntoSubscriptionKey(k: String) { prefs.edit().putString("suunto_subscription_key", k).apply() }
+    fun getSuuntoSubscriptionKey(): String? = prefs.getString("suunto_subscription_key", null)
+    fun saveSuuntoClientId(id: String) { prefs.edit().putString("suunto_client_id", id).apply() }
+    fun getSuuntoClientId(): String? = prefs.getString("suunto_client_id", null)
+    fun saveSuuntoClientSecret(sec: String) { prefs.edit().putString("suunto_client_secret", sec).apply() }
+    fun getSuuntoClientSecret(): String? = prefs.getString("suunto_client_secret", null)
+    fun isSuuntoLoggedIn(): Boolean = !getSuuntoToken().isNullOrEmpty()
+
     fun isLoggedIn(ds: DataSource): Boolean = when (ds) {
         DataSource.IGPSPORT -> isIgpsportLoggedIn()
         DataSource.XINGZHE -> isXingzheLoggedIn()
@@ -259,6 +315,10 @@ class PrefsManager(context: Context) {
         DataSource.MYWHOOSH -> isMywhooshLoggedIn()
         DataSource.ZWIFT -> isZwiftLoggedIn()
         DataSource.KEEP -> isKeepLoggedIn()
+        DataSource.CODOON -> isCodoonLoggedIn()
+        DataSource.ZEPP -> isZeppLoggedIn()
+        DataSource.KOMOT -> isKomootLoggedIn()
+        DataSource.SUUNTO -> isSuuntoLoggedIn()
     }
 
     // ===== 用户名存储 =====
@@ -376,4 +436,40 @@ class PrefsManager(context: Context) {
     }
 
     fun clearAll() = prefs.edit().clear().apply()
+
+    // ============ v8.4.0 同步任务存取（对齐开发版 SyncTask JSON） ============
+    private val tasksKey = "sync_tasks_v1"
+
+    fun getTasks(): List<com.jichi.ob.model.SyncTask> {
+        val json = prefs.getString(tasksKey, null) ?: return emptyList()
+        return try {
+            val arr = org.json.JSONArray(json)
+            (0 until arr.length()).mapNotNull { i ->
+                try { com.jichi.ob.model.SyncTask.fromJson(arr.getJSONObject(i)) } catch (_: Exception) { null }
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    fun saveTasks(tasks: List<com.jichi.ob.model.SyncTask>) {
+        try {
+            val arr = org.json.JSONArray()
+            tasks.forEach { arr.put(it.toJson()) }
+            prefs.edit().putString(tasksKey, arr.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun upsertTask(task: com.jichi.ob.model.SyncTask) {
+        val tasks = getTasks().toMutableList()
+        val idx = tasks.indexOfFirst { it.id == task.id }
+        if (idx >= 0) tasks[idx] = task else tasks.add(0, task)
+        saveTasks(tasks)
+    }
+
+    fun deleteTask(id: String) {
+        saveTasks(getTasks().filter { it.id != id })
+    }
+
+    // ============ v8.4.0 登录页自动检查开关（对齐开发版） ============
+    fun isAutoCheckLogin(): Boolean = prefs.getBoolean("auto_check_login", true)
+    fun setAutoCheckLogin(b: Boolean) = prefs.edit().putBoolean("auto_check_login", b).apply()
 }

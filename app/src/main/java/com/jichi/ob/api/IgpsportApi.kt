@@ -31,6 +31,7 @@ class IgpsportApi {
 
     companion object {
         private const val TAG = "IgpsportApi"
+        private const val FIT_EPOCH = 631065600000L // FIT epoch 1989-12-31 → unix ms 偏移
         const val LOGIN_URL = "https://login.passport.igpsport.cn/login?lang=zh-Hans"
         private const val BASE = "https://prod.zh.igpsport.com/service"
         private const val ACTIVITY_URL = "$BASE/web-gateway/web-analyze/activity/queryMyActivity"
@@ -181,6 +182,64 @@ class IgpsportApi {
             result
         }
  
+    fun parseFitStartTimeMs(bytes: ByteArray): Long {
+        try {
+            if (bytes.size < 14 || bytes[8] != '.'.code.toByte() || bytes[9] != 'F'.code.toByte() ||
+                bytes[10] != 'I'.code.toByte() || bytes[11] != 'T'.code.toByte()) return 0
+            val headerSize = bytes[0].toInt() and 0xFF
+            val dataSize = ((bytes[4].toLong() and 0xFF) or ((bytes[5].toLong() and 0xFF) shl 8) or
+                    ((bytes[6].toLong() and 0xFF) shl 16) or ((bytes[7].toLong() and 0xFF) shl 24))
+            if (headerSize <= 0 || headerSize >= bytes.size) return 0
+            var pos = headerSize
+            val end = minOf(bytes.size.toLong(), headerSize + dataSize).toInt()
+            var firstRecordTs = 0L
+            val localDefs = HashMap<Int, Pair<Int, List<IntArray>>>() // localType -> (globalNum, [(fieldNum, size, baseType)])
+            var guard = 0
+            while (pos + 1 <= end && guard < 200000) {
+                guard++
+                val hdr = bytes[pos].toInt() and 0xFF
+                val localType = hdr and 0x0F
+                val isDef = (hdr and 0x40) != 0
+                if (isDef) {
+                    if (pos + 5 > end) break
+                    val globalNum = (bytes[pos + 1].toInt() and 0xFF) or ((bytes[pos + 2].toInt() and 0xFF) shl 8)
+                    val fieldCount = bytes[pos + 3].toInt() and 0xFF
+                    var p = pos + 4
+                    val fields = ArrayList<IntArray>(fieldCount)
+                    for (i in 0 until fieldCount) {
+                        if (p + 3 > end) break
+                        val fn = bytes[p].toInt() and 0xFF
+                        val size = bytes[p + 1].toInt() and 0xFF
+                        val bt = bytes[p + 2].toInt() and 0xFF
+                        fields.add(intArrayOf(fn, size, bt))
+                        p += 3
+                    }
+                    localDefs[localType] = globalNum to fields
+                    pos = p
+                } else {
+                    val def = localDefs[localType] ?: break
+                    val (globalNum, fields) = def
+                    var p = pos + 1
+                    for ((fn, size, _) in fields) {
+                        if (p + size > end) break
+                        if (size == 4 && (fn == 253 || (globalNum == 0 && fn == 4))) {
+                            val v = (bytes[p].toLong() and 0xFF) or ((bytes[p + 1].toLong() and 0xFF) shl 8) or
+                                    ((bytes[p + 2].toLong() and 0xFF) shl 16) or ((bytes[p + 3].toLong() and 0xFF) shl 24)
+                            if (v > 0x10000000L) { // 有效时间（FIT epoch 起算秒）
+                                val ms = v * 1000L + FIT_EPOCH
+                                if (globalNum == 0) return ms // file_id.time_created 最权威
+                                if (firstRecordTs == 0L && globalNum == 20) firstRecordTs = ms
+                            }
+                        }
+                        p += size
+                    }
+                    pos = p
+                }
+            }
+            return firstRecordTs
+        } catch (_: Exception) { return 0 }
+    }
+
     suspend fun downloadFitFile(token: String, rideId: String, activityDownloadUrl: String? = null): ByteArray =
         withContext(Dispatchers.IO) {
             val downloadUrl: String

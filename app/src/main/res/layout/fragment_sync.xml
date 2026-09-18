@@ -126,6 +126,36 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
+        <!-- v8.4.0: 📦 同步任务区（与批量同步平级） -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            app:cardCornerRadius="20dp"
+            app:cardElevation="0dp"
+            app:strokeColor="#C9DFF7"
+            app:strokeWidth="1dp">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+                    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="📦 同步任务" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
+                    <TextView android:id="@+id/tvTaskHint" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0 个任务" android:textSize="11sp" android:textColor="@color/text_secondary" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/containerTasks" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
+                <TextView
+                    android:id="@+id/btnGoCreate"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center"
+                    android:background="@drawable/bg_check_update"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:text="＋ 新建任务（多来源 → Outbase）"
+                    android:textColor="@color/primary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
         <!-- 卡片3：统计 -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"

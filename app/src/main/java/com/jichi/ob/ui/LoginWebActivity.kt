@@ -51,6 +51,7 @@ class LoginWebActivity : AppCompatActivity() {
         const val TYPE_COROS_CN = "coros_cn"
         const val TYPE_COROS_INT = "coros_int"
         const val TYPE_WAHOO = "wahoo"
+        const val TYPE_SUUNTO = "suunto"
         const val RESULT_TOKEN = "***"
         const val RESULT_SESSION_ID = "session_id"
         const val RESULT_LOGIN_TYPE = "login_type"
@@ -119,6 +120,7 @@ class LoginWebActivity : AppCompatActivity() {
                 TYPE_COROS_CN -> "登录高驰中国"
                 TYPE_COROS_INT -> "登录高驰国际"
                 TYPE_WAHOO -> "登录 Wahoo"
+                TYPE_SUUNTO -> "登录 松拓"
                 else -> "登录"
             }
             toolbar.setNavigationOnClickListener { detected = true; finish() }
@@ -157,6 +159,18 @@ class LoginWebActivity : AppCompatActivity() {
                     val loginUrl = if (isCN) com.jichi.ob.api.GarminApi.LOGIN_URL_CN else com.jichi.ob.api.GarminApi.LOGIN_URL_COM
                     webView.loadUrl(loginUrl)
                 }
+                // v8.4.2: 手动清空风控（带确认提示；不依赖登录态，对齐开发版 v8.2.1）
+                findViewById<android.widget.TextView>(R.id.tvClearCooldown)?.setOnClickListener {
+                    androidx.appcompat.app.AlertDialog.Builder(this)
+                        .setTitle("清空风控")
+                        .setMessage("若清空风控后强行尝试登录，可能增加冷却时间，你确定清空吗？")
+                        .setPositiveButton("确定清空") { _, _ ->
+                            com.jichi.ob.api.GarminApi.clearAllCooldownFor(if (isCN) DataSource.GARMIN_CN else DataSource.GARMIN_COM)
+                            android.widget.Toast.makeText(this, "风控冷却缓存已清空，可重新登录", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        .setNegativeButton("取消", null)
+                        .show()
+                }
                 btnLogin.setOnClickListener {
                     val email = etEmail.text?.toString()?.trim() ?: ""
                     val password = etPassword.text?.toString() ?: ""
@@ -164,22 +178,28 @@ class LoginWebActivity : AppCompatActivity() {
                         tvStatus.text = "请输入邮箱和密码"
                         return@setOnClickListener
                     }
-                    // v8.2.0: 佳明登录风控——仅当该账号在该区域【所有SSO通道】都处于冷却时才拦截
-                    // （任一通道可用即放行，自动换通道登录绕开单通道限流）
+                    // v8.4.2: 冷却缓存不再硬拦截登录（对齐开发版 v8.1.9）——仅提示；
+                    // OAuth1 表单直连直接放行，登录成功后自动清除冷却缓存
                     val dsCooldown = if (isCN) DataSource.GARMIN_CN else DataSource.GARMIN_COM
-                    if (com.jichi.ob.api.GarminApi.isAllChannelsCooldown(dsCooldown, email)) {
-                        btnLogin.isEnabled = true
-                        btnLogin.text = "登录"
-                        tvStatus.text = "❌ 该账号所有佳明登录通道均处于风控冷却中，请约${com.jichi.ob.api.GarminApi.cooldownRemainAnyMinutes(dsCooldown, email)}分钟后重试\n（冷却针对该账号，可切换其他账号登录）"
-                        return@setOnClickListener
-                    }
                     btnLogin.isEnabled = false
                     btnLogin.text = "登录中..."
-                    tvStatus.text = "正在通过mobile SSO登录..."
+                    val remainMin = com.jichi.ob.api.GarminApi.cooldownRemainAnyMinutes(dsCooldown, email)
+                    tvStatus.text = if (remainMin > 0) {
+                        "检测到本地冷却缓存(${remainMin}分钟)，已跳过直接尝试登录（登录成功将自动清除缓存）..."
+                    } else {
+                        "正在通过佳明官方老版直连通道登录..."
+                    }
                     GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                         try {
                             val garminApi = com.jichi.ob.api.GarminApi()
-                            val cred = garminApi.loginMobile(email, password, isCN)
+                            // 国际版优先 OAuth1 账号密码直连（绕开 mobile SSO 每天一次限制与 WebView 按钮风控），
+                            // 失败再降级 mobile SSO；中国版保持 mobile SSO 优先，OAuth1 兜底
+                            var cred: String? = null
+                            if (!isCN) cred = garminApi.loginOAuth1(email, password, false)
+                            if (cred == null) cred = garminApi.loginMobile(email, password, isCN)
+                            if (cred == null && isCN) cred = garminApi.loginOAuth1(email, password, true)
+                            // 登录成功自动清除该账号本地冷却缓存（覆盖安装保留的旧缓存不再误拦截后续登录）
+                            if (cred != null) com.jichi.ob.api.GarminApi.clearCooldownFor(dsCooldown, email)
                             runOnUiThread {
                                 if (cred != null) {
                                     tvStatus.text = "✅ 登录成功！"
@@ -189,15 +209,24 @@ class LoginWebActivity : AppCompatActivity() {
                                         .putExtra(RESULT_LOGIN_TYPE, loginType))
                                     finish()
                                 } else {
-                                    // v8.2.0: 若已触发429冷却，优先提示冷却时长（避免用户误以为密码错误反复重试）
-                                    val cooldownMin = com.jichi.ob.api.GarminApi.cooldownRemainAnyMinutes(dsCooldown, email)
                                     btnLogin.isEnabled = true
                                     btnLogin.text = "登录"
-                                    tvStatus.text = if (cooldownMin > 0) {
-                                        "❌ 登录失败，该账号所有佳明登录通道均触发风控限流\n请约${cooldownMin}分钟后重试（冷却期内反复尝试会延长封禁）"
+                                    // 区分常见失败原因，给出佳明风控提示；若已触发429冷却，优先提示冷却时长
+                                    val cooldownMin = com.jichi.ob.api.GarminApi.cooldownRemainAnyMinutes(dsCooldown, email)
+                                    val failText = if (cooldownMin > 0) {
+                                        "登录失败，该账号所有佳明登录通道均触发风控限流\n请约${cooldownMin}分钟后重试（冷却期内反复尝试会延长封禁）"
                                     } else {
-                                        "❌ 登录失败，请检查邮箱密码\n（如开启了两步验证请先关闭）"
+                                        "登录失败，请检查邮箱密码\n（开启了两步验证需先关闭）\n佳明对频繁登录有风控：请保证账号密码一次输对，勿同时登录开发体验版与正式版；多次失败会触发限流，请过几小时或次日再试"
                                     }
+                                    tvStatus.text = "❌ $failText"
+                                    // 登录失败/两步验证/密码错误必须弹窗提醒，不能只落在状态栏
+                                    try {
+                                        android.app.AlertDialog.Builder(this@LoginWebActivity)
+                                            .setTitle("佳明${if (isCN) "中国" else "国际"}登录失败")
+                                            .setMessage(failText + "\n\n若已开启两步验证（短信/邮箱验证码），请关闭后再试；否则请确认账号密码正确。")
+                                            .setPositiveButton("知道了", null)
+                                            .show()
+                                    } catch (_: Exception) {}
                                 }
                             }
                         } catch (e: Exception) {
@@ -444,6 +473,7 @@ class LoginWebActivity : AppCompatActivity() {
             TYPE_COROS_CN -> detectCoros(cn = true)
             TYPE_COROS_INT -> detectCoros(cn = false)
             TYPE_WAHOO -> detectWahoo()
+            TYPE_SUUNTO -> detectSuunto()
         }
     }
 
@@ -658,6 +688,20 @@ class LoginWebActivity : AppCompatActivity() {
         setResult(Activity.RESULT_OK, Intent()
             .putExtra(RESULT_TOKEN, code)
             .putExtra(RESULT_LOGIN_TYPE, TYPE_WAHOO))
+        finish()
+    }
+
+    /** v8.3.8: 松拓 OAuth2 授权码捕获（回调 https://localhost:8080/suunto-callback?code=xxx） */
+    private fun detectSuunto() {
+        val url = webView.url ?: return
+        if (!url.contains("localhost:8080") || !url.contains("code=")) return
+        val code = extractWahooCode(url)
+        if (code.isNullOrEmpty()) return
+        detected = true
+        Log.i(TAG, "✅ Suunto 授权码捕获(detectSuunto) len=${code.length}")
+        setResult(Activity.RESULT_OK, Intent()
+            .putExtra(RESULT_TOKEN, code)
+            .putExtra(RESULT_LOGIN_TYPE, TYPE_SUUNTO))
         finish()
     }
 

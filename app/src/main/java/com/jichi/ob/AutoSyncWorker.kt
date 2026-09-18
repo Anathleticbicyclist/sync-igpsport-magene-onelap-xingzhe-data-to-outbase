@@ -69,6 +69,10 @@ class AutoSyncWorker(
     private val mywhooshApi = MyWhooshApi()
     private val zwiftApi = ZwiftApi()
     private val keepApi = KeepApi()
+    private val codoonApi = CodoonApi()
+    private val zeppApi = ZeppApi()
+    private val komootApi = KomootApi()
+    private val suuntoApi = SuuntoApi()
     private val uploadEngine = UploadEngine(applicationContext)
 
     override suspend fun doWork(): Result {
@@ -124,6 +128,71 @@ class AutoSyncWorker(
         }
 
         return try {
+            // v8.4.0: 任务级自动同步统一调度——存在启用的 autoSync 任务时优先按任务执行（多来源→Outbase），否则回退全局批量
+            val autoTasks = prefs.getTasks().filter { it.enabled && it.autoSync }
+            if (autoTasks.isNotEmpty()) {
+                var totalSynced = 0; var totalSkipped = 0; var totalFailed = 0
+                val successDetails = mutableListOf<String>()
+                val failedDetails = mutableListOf<String>()
+                val taskLines = mutableListOf<String>()
+                for (task in autoTasks) {
+                    val srcs = task.sources.mapNotNull { DataSource.fromShortName(it) }.distinct()
+                    val tgts = task.targets.mapNotNull { DataSource.fromShortName(it) }.distinct()
+                    var tSynced = 0; var tSkipped = 0; var tFailed = 0
+                    for (s in srcs) {
+                        val r = doSync(listOf(s), tgts)
+                        tSynced += r.synced; tSkipped += r.skipped; tFailed += r.failed
+                        successDetails += r.successDetails
+                        failedDetails += r.failedDetails
+                    }
+                    totalSynced += tSynced; totalSkipped += tSkipped; totalFailed += tFailed
+                    val tgtNames = tgts.joinToString("、") { it.displayName }
+                    taskLines.add("${task.name}: ${srcs.joinToString("、") { it.displayName }}→$tgtNames · 新${tSynced} 跳${tSkipped} 败${tFailed}")
+                }
+                prefs.setLastAutoSyncTime(System.currentTimeMillis())
+                prefs.setLastAutoSyncResult("任务: 新上传$totalSynced 条")
+                try {
+                    updateForeground("任务同步完成: 新上传$totalSynced 条", sources.first(), target, intervalMin)
+                    val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    val pendingIntent = getLaunchPendingIntent()
+                    val hasFail = totalFailed > 0
+                    val statusLine = buildString {
+                        if (totalSynced > 0) append("✅ 新上传${totalSynced}条")
+                        if (totalSynced > 0 && hasFail) append(" · ")
+                        if (hasFail) append("❌ 失败${totalFailed}条")
+                        if (totalSynced == 0 && !hasFail) append("📋 无新记录")
+                        if (totalSkipped > 0) append(" · 跳过${totalSkipped}")
+                    }
+                    val detail = buildString {
+                        taskLines.forEach { append("$it\n") }
+                        if (successDetails.isNotEmpty()) {
+                            append("✅ 明细:\n")
+                            successDetails.take(10).forEach { append(" · $it\n") }
+                            if (successDetails.size > 10) append(" · …共${successDetails.size}条\n")
+                        }
+                        if (failedDetails.isNotEmpty()) {
+                            append("❌ 失败:\n")
+                            failedDetails.take(10).forEach { append(" · $it\n") }
+                            if (failedDetails.size > 10) append(" · …共${failedDetails.size}条\n")
+                        }
+                        if (totalSkipped > 0) append("⏭️ 跳过 ${totalSkipped} 条（已在同步记忆）\n")
+                        append("间隔${intervalMin}分钟 | 下次约${intervalMin}分钟后")
+                    }
+                    val taskNames = autoTasks.joinToString("、") { it.name }
+                    val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
+                        .setContentTitle(if (hasFail) "迈向Ob 任务同步（部分失败）" else "迈向Ob 任务同步")
+                        .setContentText("$statusLine · ${autoTasks.size}个任务")
+                        .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
+                        .setSmallIcon(if (hasFail) android.R.drawable.stat_notify_error else android.R.drawable.ic_popup_sync)
+                        .setAutoCancel(true)
+                        .setContentIntent(pendingIntent)
+                        .setPriority(NotificationCompat.PRIORITY_LOW)
+                        .build()
+                    nm.notify(NOTIF_ID_SUMMARY, notification)
+                } catch (_: Exception) {}
+                return Result.success()
+            }
+
             val result = doSync(sources, targets)
 
             // 记录最近同步信息
@@ -206,6 +275,7 @@ class AutoSyncWorker(
             var synced = 0
             var skipped = 0
             var failed = 0
+            val statMap = HashMap<String, IntArray>()
             var lastTitle = ""
             var detectedDate = "无记录"
             val failedDetails = mutableListOf<String>()
@@ -233,6 +303,13 @@ class AutoSyncWorker(
                         DataSource.MYWHOOSH -> mywhooshApi.getActivities(sourceCred, prefs.getMywhooshWhooshId() ?: "", 0, 8)
                         DataSource.ZWIFT -> getZwiftActivitiesWithRefresh(sourceCred, prefs.getZwiftPlayerId(), prefs.getZwiftRefreshToken(), 0, 8)
                         DataSource.KEEP -> keepApi.getActivities(sourceCred, 0, 8)
+                        DataSource.CODOON -> codoonApi.getActivities(sourceCred, prefs.getCodoonUserId() ?: "", 0, 8)
+                        DataSource.ZEPP -> zeppApi.getActivities(sourceCred, prefs.getZeppUserId() ?: "", 0, 8)
+                        DataSource.KOMOT -> {
+                            val email = prefs.getKomootAccount()
+                            if (email.isNullOrEmpty()) emptyList() else komootApi.getActivities(email, sourceCred, 0, 8)
+                        }
+                        DataSource.SUUNTO -> suuntoApi.getActivities(sourceCred, prefs.getSuuntoSubscriptionKey() ?: "", 0, 8)
                         else -> emptyList()
                     }
                 } catch (e: Exception) {
@@ -240,6 +317,17 @@ class AutoSyncWorker(
                     continue
                 }
                 plog("📋 [${source.displayName}] 获取到 ${activities.size} 条活动")
+                // v8.4.2: 列表写入缓存库（登录页条数徽标数据源）
+                try {
+                    com.jichi.ob.util.ActivityCache.get(applicationContext).upsertBatch(source.shortName, activities.map {
+                        com.jichi.ob.util.ActivityCache.Entry(
+                            id = it.id, platform = source.shortName,
+                            startTime = if (it.startTimeMs > 0) it.startTimeMs else com.jichi.ob.util.ActivityCache.parseStartTimeMs(it.startTime),
+                            type = it.title, title = it.title, distanceKm = it.distance, durationSec = it.duration,
+                            filename = "", extra = it.extra ?: ""
+                        )
+                    })
+                } catch (_: Exception) {}
                 // 记录源平台最新活动日期（用于通知显示"最近检测的运动日期"）
                 activities.firstOrNull()?.let { detectedDate = it.startTime }
                 for (record in activities.take(5)) {
@@ -279,6 +367,7 @@ class AutoSyncWorker(
                             if (result.success) {
                                 prefs.addSyncedId(syncKey)
                                 synced++
+                                statMap.getOrPut(source.shortName){IntArray(3)}[0]++
                                 lastTitle = record.title.take(15)
                                 successDetails.add("${formatDate(record.startTime)} ${record.title.take(20)} → ${target.displayName}")
                                 plog("✅ 上传成功: ${target.displayName} - ${record.title.take(20)}")
@@ -288,11 +377,13 @@ class AutoSyncWorker(
                                 )
                             } else if (result.skipped) {
                                 skipped++
+                                statMap.getOrPut(source.shortName){IntArray(3)}[1]++
                                 prefs.addSyncedId(syncKey)
                                 skippedDetails.add("${formatDate(record.startTime)} ${record.title.take(20)} → ${target.displayName}")
                                 plog("⏭️ 已存在跳过: ${target.displayName}")
                             } else {
                                 failed++
+                                statMap.getOrPut(source.shortName){IntArray(3)}[2]++
                                 failedDetails.add("${record.title.take(12)}→${target.displayName}:${result.message.take(20)}")
                                 plog("❌ 上传失败: ${target.displayName} - ${result.message.take(60)}")
                             }
@@ -307,6 +398,13 @@ class AutoSyncWorker(
                 }
             }
             plog("📊 自动同步完成: 成功$synced / 跳过$skipped / 失败$failed")
+            try {
+                val cache = com.jichi.ob.util.ActivityCache.get(applicationContext)
+                for ((p, arr) in statMap) {
+                    cache.addPlatformStat(p, arr[0], arr[1], arr[2], System.currentTimeMillis())
+                    cache.addPlatformLog(p, "导出", "自动同步→Outbase 成功${arr[0]} 跳过${arr[1]} 失败${arr[2]}")
+                }
+            } catch (_: Exception) {}
             return AutoSyncResult(synced, skipped, failed, lastTitle, detectedDate, failedDetails, successDetails, skippedDetails)
         } finally {
             syncing = false
@@ -360,6 +458,13 @@ class AutoSyncWorker(
             }
             DataSource.ZWIFT -> zwiftApi.downloadFit(record.extra ?: "")
             DataSource.KEEP -> keepApi.downloadGpx(cred, record.extra ?: record.id)
+            DataSource.CODOON -> codoonApi.downloadGpx(cred, record.extra ?: record.id)
+            DataSource.ZEPP -> zeppApi.downloadGpx(cred, record.id, record.extra ?: "")
+            DataSource.KOMOT -> {
+                val email = prefs.getKomootAccount()
+                if (email.isNullOrEmpty()) null else komootApi.downloadGpx(email, cred, record.extra ?: record.id)
+            }
+            DataSource.SUUNTO -> suuntoApi.download(cred, prefs.getSuuntoSubscriptionKey() ?: "", record.extra ?: record.id, gpx = false)
             else -> null
         }
     }
