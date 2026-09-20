@@ -43,6 +43,8 @@ import com.jichi.ob.api.BrytonApi
 import com.jichi.ob.api.CorosApi
 import com.jichi.ob.api.GarminApi
 import com.jichi.ob.api.GarminOAuthHelper
+import com.jichi.ob.api.GiantApi
+import com.jichi.ob.api.JoyRunApi
 import com.jichi.ob.api.WahooApi
 import com.jichi.ob.api.WahooOAuth2Service
 import com.jichi.ob.api.IgpsportApi
@@ -111,6 +113,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var zeppApi: ZeppApi
     private lateinit var komootApi: KomootApi
     private lateinit var suuntoApi: SuuntoApi
+    private lateinit var giantApi: GiantApi
+    private lateinit var joyRunApi: JoyRunApi
     private var lastZeppLoginAttempt = 0L
     private lateinit var corosApi: CorosApi
     private lateinit var wahooApi: WahooApi
@@ -225,6 +229,9 @@ class MainActivity : AppCompatActivity() {
                             }
                         } else appendLog("⚠️ Wahoo登录失败: 未捕获到授权码或未配置凭证")
                     }
+                    LoginWebActivity.TYPE_TWO_BULU -> if (sid.length > 5) {
+                        prefs.saveTwoBuluCookie(sid); appendLog("✅ 两步路登录成功(cookie ${sid.length}字节)"); fetchUsernameAfterLogin(DataSource.TWO_BULU)
+                    } else appendLog("⚠️ 两步路cookie异常，请重新登录")
                     LoginWebActivity.TYPE_SUUNTO -> {
                         // v8.3.8: Suunto 返回 OAuth2 授权码 → 换 token（需三凭证）
                         val clientId = if (com.jichi.ob.api.SuuntoApi.isBuiltinConfigured()) com.jichi.ob.api.SuuntoApi.BUILTIN_CLIENT_ID else prefs.getSuuntoClientId()
@@ -286,6 +293,8 @@ class MainActivity : AppCompatActivity() {
             zeppApi = ZeppApi()
             komootApi = KomootApi()
             suuntoApi = SuuntoApi()
+            giantApi = GiantApi()
+            joyRunApi = JoyRunApi()
             CodoonApi.gcjConvertEnabled = prefs.isCodoonGcjConvertEnabled()
             ZeppApi.gcjConvertEnabled = prefs.isZeppGcjConvertEnabled()
             corosApi = CorosApi()
@@ -337,6 +346,10 @@ class MainActivity : AppCompatActivity() {
             DataSource.ZEPP -> openZeppLogin()
             DataSource.KOMOT -> openKomootLogin()
             DataSource.SUUNTO -> openSuuntoLogin()
+            DataSource.GIANT -> openGiantLogin()
+            DataSource.TWO_BULU -> openLogin(LoginWebActivity.TYPE_TWO_BULU, "https://www.2bulu.com/")
+            DataSource.JOYRUN -> openJoyRunLogin()
+            else -> {}  // v8.4.4: 实验室平台（Strava/Polar/Fitbit/Withings/TrainingPeaks）正式版不提供登录入口
         }
     }
 
@@ -914,11 +927,23 @@ class MainActivity : AppCompatActivity() {
                             runOnUiThread {
                                 appendLog("❌ 佳明中国触发风控限流(429)，已写入冷却。该账号请约${remain}分钟后重试（冷却仅针对该账号）")
                                 loginFragment.updateStatus()
+                                showGarminLoginFailDialog("佳明中国", "触发风控限流(429)，该账号请约${remain}分钟后重试。冷却期内反复尝试会延长封禁。")
                             }
                         } else {
                             runOnUiThread {
                                 appendLog("❌ 佳明中国登录失败: $msg")
                                 loginFragment.updateStatus()
+                                // v8.3.4: 密码错误/两步验证等失败必须弹窗提醒，不能只落日志
+                                val hint = when {
+                                    msg.contains("INVALID_USERNAME_PASSWORD") || msg.contains("invalid_username_password") || msg.contains("401") ->
+                                        "账号或密码错误，请检查后重试。"
+                                    msg.contains("MFA") || msg.contains("mfa") || msg.contains("two") || msg.contains("verify") ->
+                                        "该账号开启了两步验证，请先关闭两步验证（或使用网页版完成验证）后再登录。"
+                                    msg.contains("captcha") || msg.contains("Captcha") ->
+                                        "触发人机验证，请稍后再试或改用网页版登录。"
+                                    else -> "登录失败：$msg"
+                                }
+                                showGarminLoginFailDialog("佳明中国", hint)
                             }
                         }
                     }
@@ -926,6 +951,186 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+
+    /** v8.4.4: 佳明登录失败统一弹窗（对齐开发版 v8.3.4）——引导文案 + 可滑动日志 + 复制/知道了 */
+    private fun showGarminLoginFailDialog(region: String, hint: String) {
+        try {
+            flushGarminDebugLogs()
+            val dialog = android.app.Dialog(this, android.R.style.Theme_Translucent_NoTitleBar)
+            val view = layoutInflater.inflate(R.layout.dialog_garmin_login, null)
+            view.findViewById<android.widget.TextView>(R.id.tvGarminDialogTitle).text = "$region 登录失败"
+            view.findViewById<android.widget.TextView>(R.id.tvGarminDialogGuide).text =
+                hint + "\n\n如果不确定可以将报错日志通过抖音发给「多吃两口」排查。"
+            var logTail = try {
+                prefs.getPersistLogs().takeLast(18).joinToString("\n")
+            } catch (_: Exception) { "" }
+            if (logTail.isBlank()) {
+                logTail = synchronized(com.jichi.ob.api.GarminApi.debugLogs) {
+                    com.jichi.ob.api.GarminApi.debugLogs.takeLast(18).joinToString("\n")
+                }
+            }
+            view.findViewById<android.widget.TextView>(R.id.tvGarminDialogLog).text =
+                if (logTail.isNotBlank()) logTail else "（暂无佳明日志）"
+            view.findViewById<android.widget.TextView>(R.id.btnGarminContinue).visibility = android.view.View.GONE
+            view.findViewById<android.widget.TextView>(R.id.btnGarminCopyLog).setOnClickListener {
+                try {
+                    val cm = getSystemService(android.content.ClipboardManager::class.java)
+                    cm?.setPrimaryClip(android.content.ClipData.newPlainText("garminLog",
+                        hint + "\n\n——— 佳明登录日志 ———\n" + (if (logTail.isNotBlank()) logTail else "（暂无佳明日志）")))
+                    android.widget.Toast.makeText(this, "日志已复制，可粘贴反馈", android.widget.Toast.LENGTH_SHORT).show()
+                } catch (_: Exception) {}
+            }
+            view.findViewById<android.widget.TextView>(R.id.btnGarminOk).setOnClickListener { dialog.dismiss() }
+            dialog.setContentView(view)
+            dialog.setCancelable(true)
+            dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+            dialog.window?.setLayout(
+                (resources.displayMetrics.widthPixels * 0.9f).toInt(),
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            dialog.show()
+        } catch (_: Exception) {}
+    }
+
+    /** v8.4.4: 捷安特直接登录——账号密码原生表单直调 GiantApi（对齐开发版；捷安特为上传目标，正式版仅作登录展示） */
+    internal fun openGiantLogin() {
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 24)
+        }
+        val accountInput = android.widget.EditText(this).apply {
+            hint = "捷安特账号（手机号/邮箱）"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            setText(prefs.getGiantAccount() ?: "")
+        }
+        val passwordInput = android.widget.EditText(this).apply {
+            hint = "捷安特密码"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
+        }
+        layout.addView(accountInput)
+        layout.addView(passwordInput)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("登录捷安特")
+            .setMessage("账号密码直接登录。捷安特为官方API上传目标，不支持下载活动，正式版仅作登录展示。")
+            .setView(layout)
+            .setPositiveButton("登录") { _, _ ->
+                val account = accountInput.text.toString().trim()
+                val password = passwordInput.text.toString()
+                if (account.isEmpty() || password.isEmpty()) {
+                    appendLog("⚠️ 请输入捷安特账号和密码")
+                    return@setPositiveButton
+                }
+                prefs.saveGiantAccount(account)
+                appendLog("🔐 捷安特直接登录中...")
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val result = giantApi.login(account, password)
+                    runOnUiThread {
+                        if (result != null) {
+                            prefs.saveGiantToken(result.token)
+                            prefs.saveUsername(DataSource.GIANT, result.nickname)
+                            appendLog("✅ 捷安特登录成功")
+                            fetchUsernameAfterLogin(DataSource.GIANT)
+                        } else {
+                            appendLog("❌ 捷安特登录失败：账号或密码错误，请重新输入")
+                        }
+                        loginFragment.updateStatus()
+                        try { settingsFragment?.refreshLoginState() } catch (_: Exception) {}
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** v8.4.4: 悦跑圈短信验证码登录（对齐开发版 JoyRunApi 逆向接口；待真实账号验证） */
+    internal fun openJoyRunLogin() {
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 24)
+        }
+        val phoneInput = android.widget.EditText(this).apply {
+            hint = "悦跑圈手机号"
+            inputType = android.text.InputType.TYPE_CLASS_PHONE
+            setText(prefs.getJoyrunAccount() ?: "")
+        }
+        val codeInput = android.widget.EditText(this).apply {
+            hint = "短信验证码"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+        val sendBtn = android.widget.Button(this).apply { text = "发送验证码" }
+        layout.addView(phoneInput)
+        layout.addView(codeInput)
+        layout.addView(sendBtn)
+
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("登录悦跑圈")
+            .setMessage("短信验证码登录（逆向接口，待真实账号验证）")
+            .setView(layout)
+            .setPositiveButton("登录", null)
+            .setNegativeButton("取消", null)
+            .create()
+        sendBtn.setOnClickListener {
+            val phone = phoneInput.text.toString().trim()
+            if (phone.length != 11) {
+                android.widget.Toast.makeText(this, "请输入11位手机号", android.widget.Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            sendBtn.isEnabled = false
+            lifecycleScope.launch(Dispatchers.IO) {
+                val (ok, msg) = joyRunApi.sendSms(phone)
+                runOnUiThread {
+                    if (ok) {
+                        android.widget.Toast.makeText(this@MainActivity, "验证码已发送", android.widget.Toast.LENGTH_SHORT).show()
+                        // 60s 倒计时
+                        lifecycleScope.launch {
+                            for (i in 60 downTo 1) {
+                                sendBtn.text = "重新发送(${i}s)"
+                                kotlinx.coroutines.delay(1000)
+                                if (!sendBtn.isAttachedToWindow) break
+                            }
+                            sendBtn.isEnabled = true
+                            sendBtn.text = "发送验证码"
+                        }
+                    } else {
+                        sendBtn.isEnabled = true
+                        android.widget.Toast.makeText(this@MainActivity, "发送失败: $msg", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+        dialog.setOnShowListener {
+            dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val phone = phoneInput.text.toString().trim()
+                val code = codeInput.text.toString().trim()
+                if (phone.isEmpty() || code.isEmpty()) {
+                    android.widget.Toast.makeText(this, "请输入手机号和验证码", android.widget.Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                prefs.saveJoyrunAccount(phone)
+                appendLog("🔐 悦跑圈短信登录中...")
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val result = joyRunApi.loginByPhone(phone, code)
+                    runOnUiThread {
+                        if (result != null) {
+                            prefs.saveJoyrunToken("sid=${result.sid}&uid=${result.uid}")
+                            appendLog("✅ 悦跑圈登录成功")
+                            fetchUsernameAfterLogin(DataSource.JOYRUN)
+                            dialog.dismiss()
+                        } else {
+                            appendLog("❌ 悦跑圈登录失败：验证码错误或已过期")
+                            android.widget.Toast.makeText(this@MainActivity, "登录失败，请重试", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        loginFragment.updateStatus()
+                        try { settingsFragment?.refreshLoginState() } catch (_: Exception) {}
+                    }
+                }
+            }
+        }
+        dialog.show()
     }
 
     /** v7.2.0: Wahoo配置对话框（保留，用于用户自配置凭证） */
@@ -1062,7 +1267,8 @@ class MainActivity : AppCompatActivity() {
                 DataSource.IGPSPORT, DataSource.XINGZHE, DataSource.MAGENE, DataSource.BLACKBIRD,
                 DataSource.BRYTON, DataSource.OUTBASE, DataSource.GARMIN_COM, DataSource.GARMIN_CN,
                 DataSource.COROS_CN, DataSource.COROS_INT, DataSource.WAHOO, DataSource.MYWHOOSH, DataSource.ZWIFT, DataSource.KEEP,
-                DataSource.CODOON, DataSource.ZEPP, DataSource.KOMOT, DataSource.SUUNTO
+                DataSource.CODOON, DataSource.ZEPP, DataSource.KOMOT, DataSource.SUUNTO,
+                DataSource.GIANT, DataSource.TWO_BULU, DataSource.JOYRUN
             )
             for (ds in platforms) {
                 if (!prefs.isLoggedIn(ds)) continue  // 未登录过的跳过，不发无用请求
@@ -1094,6 +1300,10 @@ class MainActivity : AppCompatActivity() {
                             val sk = suuntoSubscriptionKey()
                             if (sk.isNullOrEmpty()) null else suuntoApi.getUsername(cred, sk)
                         }
+                        DataSource.GIANT -> giantApi.getUsername(cred)
+                        DataSource.TWO_BULU -> null
+                        DataSource.JOYRUN -> null
+                        else -> null
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "启动登录检测 ${ds.displayName} 异常: ${e.message}")
@@ -1258,6 +1468,10 @@ class MainActivity : AppCompatActivity() {
                     val sk = suuntoSubscriptionKey()
                     if (sk.isNullOrEmpty()) null else suuntoApi.getUsername(cred, sk)
                 }
+                DataSource.GIANT -> giantApi.getUsername(cred)
+                DataSource.TWO_BULU -> null
+                DataSource.JOYRUN -> null
+                else -> null
             }
             if (name != null) {
                 prefs.saveUsername(ds, name)
@@ -1862,6 +2076,23 @@ class MainActivity : AppCompatActivity() {
                 if (email.isNullOrEmpty()) emptyList() else komootApi.getActivities(email, cred, skip, limit)
             }
             DataSource.SUUNTO -> suuntoApi.getActivities(cred, suuntoSubscriptionKey() ?: "", skip, limit)
+            DataSource.TWO_BULU -> {
+                // v8.4.4: 两步路=本地捕获KML入库（WebView浏览即捕获），从 ActivityCache 读取已捕获记录
+                try {
+                    com.jichi.ob.util.ActivityCache.get(this).queryByPlatform("2b")
+                        .drop(skip).take(if (limit > 0) limit else 500)
+                        .map { e ->
+                            ActivityRecord(
+                                id = e.id, title = e.title,
+                                startTime = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+                                    .format(java.util.Date(e.startTime)),
+                                distance = e.distanceKm, duration = e.durationSec,
+                                source = DataSource.TWO_BULU, startTimeMs = e.startTime, extra = e.filename
+                            )
+                        }
+                } catch (_: Exception) { emptyList() }
+            }
+            DataSource.JOYRUN -> joyRunApi.getActivities(cred, skip, limit)
             else -> emptyList()
         }
     }
@@ -1981,6 +2212,19 @@ class MainActivity : AppCompatActivity() {
             DataSource.SUUNTO -> {
                 // v8.3.8: Suunto 下载轨迹→FIT（国际平台 WGS-84，无需坐标转换）
                 suuntoApi.download(cred, suuntoSubscriptionKey() ?: "", record.extra ?: record.id, gpx = false)
+            }
+            DataSource.TWO_BULU -> {
+                // v8.4.4: 两步路=本地捕获KML（extra 携带本地文件名），从存储目录读取
+                val fn = record.extra ?: ""
+                if (fn.isBlank()) null
+                else try {
+                    val f = java.io.File(SAVE_DIR, fn)
+                    if (f.exists() && f.length() > 0) f.readBytes() else null
+                } catch (_: Exception) { null }
+            }
+            DataSource.JOYRUN -> {
+                // v8.4.4: 悦跑圈下载轨迹→GPX（id 形如 jr_<fid>）
+                joyRunApi.downloadGpx(cred, record.id.removePrefix("jr_"))
             }
             else -> null
         }

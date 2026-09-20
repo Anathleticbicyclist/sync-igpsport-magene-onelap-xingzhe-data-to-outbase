@@ -7,7 +7,7 @@
 [![Android](https://img.shields.io/badge/Platform-Android-green)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-blue)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v8.4.3-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-v8.4.4-brightgreen)]()
 
 一款 Android 运动数据迁移工具：**一次勾选多个数据源平台，统一批量上传到 Outbase**，解决骑行/跑步数据散落在多个平台、难以集中管理的痛点。
 
@@ -61,8 +61,9 @@
 
 | 平台 | 登录方式 | 数据格式 |
 |:----|:--------|:--------|
-| **iGPSPORT** | WebView 登录 | FIT |
+| **iGPSPORT** | WebView 登录 / 短信验证码登录 | FIT |
 | **行者** | WebView 登录 | GPX / FIT |
+| **捷安特** | 账号密码登录 | FIT |
 | **迈金/顽鹿OTM** | WebView 登录 | FIT |
 | **黑鸟单车** | WebView 登录 | FIT |
 | **百锐腾** | WebView 登录 | FIT / GPX（开发中） |
@@ -78,6 +79,8 @@
 | **Zepp** | 邮箱/手机号密码登录 | GPX（自动转 FIT 上传） |
 | **Komoot** | 邮箱密码登录 | GPX（自动转 FIT 上传） |
 | **松拓** | OAuth2 授权（需自行申请开发者凭证） | FIT |
+| **两步路** | WebView 登录 | KML（浏览即捕获下载） |
+| **悦跑圈** | 短信验证码登录 | GPX |
 
 ### 同步目标（固定）
 
@@ -107,6 +110,8 @@
 | **百锐腾下载开发中** | 百锐腾作为来源 | 百锐腾下载功能开发中，同步时会自动跳过 | 开发中 |
 | **松拓需自填凭证** | 松拓作为来源 | 松拓官方要求开发者应用凭证（Client ID/Secret/Subscription Key），需在 apizone.suunto.com 自行申请后填写 | 平台限制 |
 | **咕咚/Zepp/Komoot 为 GPX** | 作为来源 | 该三平台数据为 GPX 格式，上传 Outbase 时自动转换为 FIT，部分运动类型可能被归为骑行 | 已知问题 |
+| **两步路仅本地捕获** | 两步路作为来源 | 两步路官方无公开下载接口，采用「浏览即捕获」模式：在 WebView 中浏览轨迹详情页自动保存 KML；需先在登录页进入两步路浏览轨迹 | 逆向方案 |
+| **悦跑圈逆向接口** | 悦跑圈作为来源 | 悦跑圈轨迹下载为逆向接口，已在真机验证通过；接口若变动可能失效，会随版本修复 | 逆向方案，待长期观察 |
 
 ---
 
@@ -189,6 +194,9 @@ cd sync-igpsport-magene-onelap-xingzhe-data-to-outbase
 ---
 
 ## 📋 更新日志
+
+### v8.4.4（2026-09-20）
+- 对齐开发版：佳明登录风控优化、新增捷安特/两步路/悦跑圈来源、iGPSPORT 短信登录、Wahoo DNS 优化
 
 ### v8.4.3（2026-09-19）
 - 优化数据传输体验

@@ -18,11 +18,13 @@ android {
         applicationId "com.jichi.ob"
         minSdk 26
         targetSdk 36
-        versionCode 843
-        versionName "8.4.3"
+        versionCode 844
+        versionName "8.4.4"
         // Wahoo开发者凭证从local.properties读取（不硬编码到源码）
         buildConfigField "String", "WAHOO_CLIENT_ID", "\"${keystoreProperties['wahoo_client_id'] ?: ""}\""
         buildConfigField "String", "WAHOO_CLIENT_SECRET", "\"${keystoreProperties['wahoo_client_secret'] ?: ""}\""
+        // v8.4.4: iGPSPORT 短信验证码登录（对齐开发版）
+        buildConfigField "boolean", "IGP_NATIVE_LOGIN", "true"
     }
 
     buildFeatures {

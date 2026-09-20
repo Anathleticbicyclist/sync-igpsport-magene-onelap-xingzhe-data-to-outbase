@@ -177,6 +177,10 @@ class PrefsManager(context: Context) {
         DataSource.ZEPP -> getZeppToken()
         DataSource.KOMOT -> getKomootToken()
         DataSource.SUUNTO -> getSuuntoToken()
+        DataSource.GIANT -> getGiantToken()
+        DataSource.TWO_BULU -> getTwoBuluCookie()
+        DataSource.JOYRUN -> getJoyrunToken()
+        else -> null
     }
     /** v7.5.9: 保存平台凭证（启动登录检测刷新后更新用） */
     fun saveCredential(ds: DataSource, cred: String) {
@@ -199,6 +203,10 @@ class PrefsManager(context: Context) {
             DataSource.ZEPP -> saveZeppToken(cred)
             DataSource.KOMOT -> saveKomootToken(cred)
             DataSource.SUUNTO -> saveSuuntoToken(cred)
+            DataSource.GIANT -> saveGiantToken(cred)
+            DataSource.TWO_BULU -> saveTwoBuluCookie(cred)
+            DataSource.JOYRUN -> saveJoyrunToken(cred)
+            else -> {}
         }
     }
     /** v7.5.9: 清除平台凭证（启动登录检测判定失效时用，UI显示未登录） */
@@ -223,6 +231,10 @@ class PrefsManager(context: Context) {
             DataSource.ZEPP -> { e.remove("zepp_token"); e.remove("zepp_account"); e.remove("zepp_user_id") }
             DataSource.KOMOT -> { e.remove("komoot_token"); e.remove("komoot_account") }
             DataSource.SUUNTO -> { e.remove("suunto_token"); e.remove("suunto_refresh"); e.remove("suunto_subscription_key"); e.remove("suunto_client_id"); e.remove("suunto_client_secret") }
+            DataSource.GIANT -> e.remove("giant_token")
+            DataSource.TWO_BULU -> e.remove("twobulu_cookie")
+            DataSource.JOYRUN -> e.remove("joyrun_token")
+            else -> {}
         }
         e.remove("username_${ds.shortName}")
         e.apply()
@@ -250,6 +262,27 @@ class PrefsManager(context: Context) {
     fun isZwiftLoggedIn(): Boolean = !getZwiftToken().isNullOrEmpty()
 
     // ===== Keep: 纯API token（v8.2.1 新增，仅下载源）=====
+
+    // ===== 捷安特 GIANT（v7.8.0，官方API上传目标；正式版仅登录展示）=====
+    fun saveGiantToken(t: String) { prefs.edit().putString("giant_token", t).apply() }
+    fun getGiantToken(): String? = prefs.getString("giant_token", null)
+    fun isGiantLoggedIn(): Boolean = !getGiantToken().isNullOrEmpty()
+    fun saveGiantAccount(a: String) { prefs.edit().putString("giant_account", a).apply() }
+    fun getGiantAccount(): String? = prefs.getString("giant_account", null)
+
+    // ===== 两步路 TWO_BULU（v8.3.0，WebView登录+浏览即捕获KML）=====
+    fun saveTwoBuluCookie(c: String) { prefs.edit().putString("twobulu_cookie", c).apply() }
+    fun getTwoBuluCookie(): String? = prefs.getString("twobulu_cookie", null)
+    fun isTwoBuluLoggedIn(): Boolean = !getTwoBuluCookie().isNullOrEmpty()
+    fun logoutTwoBulu() { saveTwoBuluCookie("") }
+
+    // ===== 悦跑圈 JOYRUN（v8.4.0，逆向API，短信验证码登录；待真实账号验证）=====
+    fun saveJoyrunToken(t: String) { prefs.edit().putString("joyrun_token", t).apply() }
+    fun getJoyrunToken(): String? = prefs.getString("joyrun_token", null)
+    fun isJoyrunLoggedIn(): Boolean = !getJoyrunToken().isNullOrEmpty()
+    fun saveJoyrunAccount(a: String) { prefs.edit().putString("joyrun_account", a).apply() }
+    fun getJoyrunAccount(): String? = prefs.getString("joyrun_account", null)
+
     fun saveKeepToken(t: String) { prefs.edit().putString("keep_token", t).apply() }
     fun getKeepToken(): String? = prefs.getString("keep_token", null)
     fun saveKeepAccount(a: String) { prefs.edit().putString("keep_account", a).apply() }
@@ -319,6 +352,10 @@ class PrefsManager(context: Context) {
         DataSource.ZEPP -> isZeppLoggedIn()
         DataSource.KOMOT -> isKomootLoggedIn()
         DataSource.SUUNTO -> isSuuntoLoggedIn()
+        DataSource.GIANT -> isGiantLoggedIn()
+        DataSource.TWO_BULU -> isTwoBuluLoggedIn()
+        DataSource.JOYRUN -> isJoyrunLoggedIn()
+        else -> false
     }
 
     // ===== 用户名存储 =====

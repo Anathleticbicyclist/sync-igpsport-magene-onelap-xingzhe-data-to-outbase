@@ -6,7 +6,9 @@ import com.jichi.ob.model.ActivityRecord
 import com.jichi.ob.model.DataSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Dns
 import okhttp3.FormBody
+import java.net.InetAddress
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -46,6 +48,7 @@ class WahooApi {
         .readTimeout(120, TimeUnit.SECONDS)
         .writeTimeout(120, TimeUnit.SECONDS)
         .followRedirects(true)
+        .dns(DoHDns())  // v8.4.4: DNS污染兜底——DoH(阿里223.5.5.5)解析，绕过本地污染DNS（对齐开发版 v8.3.0）
         .build()
 
     // v7.5.4: 界面日志回调（登录失败时把真实错误响应体显示到界面，便于定位）
@@ -279,8 +282,16 @@ class WahooApi {
                     if (id == "0") continue
                     val title = item.optString("name").ifBlank { "Wahoo骑行" }
                     val startTime = item.optString("starts").ifBlank { "" }
-                    val distance = item.optDouble("distance", 0.0)
-                    val duration = item.optInt("duration", 0)
+                    var distance = item.optDouble("distance", -1.0)
+                    if (distance < 0) distance = item.optDouble("distanceKm", -1.0)
+                    if (distance < 0) distance = item.optDouble("totalDistance", -1.0)
+                    if (distance < 0) distance = item.optDouble("distance_km", -1.0)
+                    if (distance < 0) distance = 0.0
+                    // ≥1000 视为米，转为公里
+                    if (distance >= 1000) distance = distance / 1000.0
+                    var duration = item.optInt("duration", 0)
+                    if (duration <= 0) duration = item.optInt("durationSec", 0)
+                    if (duration <= 0) duration = item.optInt("totalTime", 0)
                     out.add(ActivityRecord(id, title, startTime, distance, duration, DataSource.WAHOO))
                 }
                 out
@@ -400,5 +411,44 @@ class WahooApi {
         } catch (e: Exception) {
             Log.e(TAG, "downloadFit error", e); null
         }
+    }
+
+}
+
+/** v8.4.4: DoH DNS 兜底（对齐开发版 v8.3.0）——本机 hosts/系统解析失败时走阿里公共DNS(223.5.5.5) HTTPS DoH */
+class DoHDns : Dns {
+    private val TAG = "WahooDoH"
+    private val dohClient = OkHttpClient.Builder()
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
+        .build()
+
+    override fun lookup(hostname: String): List<InetAddress> {
+        return try {
+            val sys = Dns.SYSTEM.lookup(hostname)
+            if (sys.isNotEmpty()) sys
+            else dohLookup(hostname)
+        } catch (e: Exception) {
+            try { dohLookup(hostname) } catch (e2: Exception) { emptyList() }
+        }
+    }
+
+    private fun dohLookup(hostname: String): List<InetAddress> {
+        val url = "https://223.5.5.5/resolve?name=$hostname&type=A"
+        val req = okhttp3.Request.Builder().url(url)
+            .addHeader("Accept", "application/dns-json")
+            .build()
+        val body = dohClient.newCall(req).execute().use { it.body?.string() ?: "" }
+        val json = org.json.JSONObject(body)
+        val arr = json.optJSONArray("Answer") ?: org.json.JSONArray()
+        val out = mutableListOf<InetAddress>()
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            if (o.optInt("type", 0) == 1) {
+                try { out.add(InetAddress.getByName(o.optString("data", ""))) } catch (_: Exception) {}
+            }
+        }
+        if (out.isNotEmpty()) Log.i(TAG, "DoH解析 $hostname -> ${out.joinToString(","){it.hostAddress}}")
+        return out
     }
 }

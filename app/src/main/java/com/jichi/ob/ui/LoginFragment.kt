@@ -28,10 +28,10 @@ class LoginFragment : Fragment() {
     /** 登录页展示平台（Outbase 单独固定卡，不进容器） */
     private val LOGIN_PLATFORMS = listOf(
         DataSource.IGPSPORT, DataSource.XINGZHE, DataSource.MAGENE, DataSource.BLACKBIRD,
-        DataSource.BRYTON, DataSource.GARMIN_COM, DataSource.GARMIN_CN,
+        DataSource.GIANT, DataSource.BRYTON, DataSource.GARMIN_COM, DataSource.GARMIN_CN,
         DataSource.COROS_CN, DataSource.COROS_INT, DataSource.WAHOO, DataSource.MYWHOOSH,
         DataSource.ZWIFT, DataSource.KEEP, DataSource.CODOON, DataSource.ZEPP,
-        DataSource.KOMOT, DataSource.SUUNTO
+        DataSource.KOMOT, DataSource.SUUNTO, DataSource.TWO_BULU, DataSource.JOYRUN
     )
 
     private lateinit var prefs: PrefsManager
@@ -616,6 +616,7 @@ class LoginFragment : Fragment() {
         DataSource.XINGZHE -> R.drawable.bg_dot_xingzhe
         DataSource.MAGENE -> R.drawable.bg_dot_magene
         DataSource.BLACKBIRD -> R.drawable.bg_dot_blackbird
+        DataSource.GIANT -> R.drawable.bg_dot_giant
         DataSource.BRYTON -> R.drawable.bg_dot_bryton
         DataSource.GARMIN_COM, DataSource.GARMIN_CN -> R.drawable.bg_dot_garmin
         DataSource.COROS_CN, DataSource.COROS_INT -> R.drawable.bg_dot_coros
@@ -627,7 +628,10 @@ class LoginFragment : Fragment() {
         DataSource.ZEPP -> R.drawable.bg_dot_zepp
         DataSource.KOMOT -> R.drawable.bg_dot_komoot
         DataSource.SUUNTO -> R.drawable.bg_dot_suunto
+        DataSource.TWO_BULU -> R.drawable.bg_dot_keep
+        DataSource.JOYRUN -> R.drawable.bg_dot_keep
         DataSource.OUTBASE -> R.drawable.bg_dot_outbase
+        else -> R.drawable.bg_dot_keep
     }
 
     private fun dp(v: Float): Float = v * resources.displayMetrics.density

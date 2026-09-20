@@ -142,6 +142,8 @@ class SyncSettingsFragment : Fragment() {
         "zp" -> requireContext().getColor(R.color.zepp_blue)
         "kt" -> requireContext().getColor(R.color.komoot_red)
         "su" -> requireContext().getColor(R.color.suunto_blue)
+        "2b" -> requireContext().getColor(R.color.twobulu_green)
+        "jr" -> requireContext().getColor(R.color.joyrun_green)
         else -> requireContext().getColor(R.color.primary)
     }
 

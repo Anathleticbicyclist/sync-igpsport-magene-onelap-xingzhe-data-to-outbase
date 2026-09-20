@@ -49,6 +49,8 @@
     <color name="zepp_blue">#3457D5</color>
     <color name="komoot_red">#E23135</color>
     <color name="suunto_blue">#1E88E5</color>       <!-- Keep：品牌黄 -->
+    <color name="twobulu_green">#2E8B57</color>        <!-- 两步路：绿色 -->
+    <color name="joyrun_green">#00B578</color>        <!-- 悦跑圈：绿色 -->
     <color name="giant_blue">#2A6FD6</color>         <!-- 捷安特 Giant -->
     <color name="intervals_icu_orange">#F57C00</color> <!-- Intervals.icu -->
 

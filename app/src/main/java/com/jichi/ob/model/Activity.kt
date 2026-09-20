@@ -21,6 +21,7 @@ enum class DataSource(val displayName: String, val shortName: String) {
     MAGENE("迈金", "mg"),
     BLACKBIRD("黑鸟单车", "bb"),
     BRYTON("百锐腾", "br"),
+    GIANT("捷安特", "gt"),
     OUTBASE("Outbase", "ob"),
     // v6.5.0 新增：佳明(国际/中国)、高驰(中国/国际)、Wahoo
     GARMIN_COM("佳明国际", "gm"),
@@ -37,12 +38,20 @@ enum class DataSource(val displayName: String, val shortName: String) {
     CODOON("咕咚", "cd"),
     ZEPP("Zepp", "zp"),
     KOMOT("Komoot", "kt"),
-    SUUNTO("松拓", "su");
+    SUUNTO("松拓", "su"),
+    TWO_BULU("两步路", "2b"),
+    JOYRUN("悦跑圈", "jr"),
+    // v8.4.4: 实验室平台枚举（仅 LoginWebActivity 登录映射兼容开发版，正式版不提供同步入口）
+    STRAVA("Strava", "st"),
+    POLAR("Polar", "po"),
+    FITBIT("Fitbit", "fb"),
+    WITHINGS("Withings", "wi"),
+    TRAININGPEAKS("TrainingPeaks", "tp");
 
     companion object {
         /** 可作为"来源(下载)"的平台 */
         fun sourcePlatforms(): List<DataSource> =
-            listOf(IGPSPORT, XINGZHE, MAGENE, BLACKBIRD, BRYTON, GARMIN_COM, GARMIN_CN, COROS_CN, COROS_INT, WAHOO, MYWHOOSH, ZWIFT, KEEP, CODOON, ZEPP, KOMOT, SUUNTO)
+            listOf(IGPSPORT, XINGZHE, MAGENE, BLACKBIRD, BRYTON, GARMIN_COM, GARMIN_CN, COROS_CN, COROS_INT, WAHOO, MYWHOOSH, ZWIFT, KEEP, CODOON, ZEPP, KOMOT, SUUNTO, TWO_BULU, JOYRUN)
         fun fromShortName(s: String): DataSource? = entries.find { it.shortName == s }
     }
 }
@@ -71,7 +80,9 @@ enum class DownloadSupport(val available: Boolean, val note: String) {
     CODOON(true, ""),
     ZEPP(true, ""),
     KOMOT(true, ""),
-    SUUNTO(true, "");
+    SUUNTO(true, ""),
+    TWO_BULU(true, "浏览即捕获下载KML"),
+    JOYRUN(true, "");
 
     companion object {
         fun fromDataSource(ds: DataSource): DownloadSupport = when (ds) {
@@ -92,6 +103,8 @@ enum class DownloadSupport(val available: Boolean, val note: String) {
             DataSource.ZEPP -> ZEPP
             DataSource.KOMOT -> KOMOT
             DataSource.SUUNTO -> SUUNTO
+            DataSource.TWO_BULU -> TWO_BULU
+            DataSource.JOYRUN -> JOYRUN
             else -> BRYTON
         }
     }
@@ -100,6 +113,7 @@ enum class DownloadSupport(val available: Boolean, val note: String) {
 /** v8.0.0 正式版: 上传目标仅保留 Outbase（多对一） */
 enum class UploadSupport(val available: Boolean, val note: String) {
     OUTBASE(true, ""),
+    GIANT(false, "正式版仅支持上传到Outbase"),
     IGPSPORT(false, "正式版仅支持上传到Outbase"),
     XINGZHE(false, "正式版仅支持上传到Outbase"),
     MAGENE(false, "正式版仅支持上传到Outbase"),
@@ -116,11 +130,19 @@ enum class UploadSupport(val available: Boolean, val note: String) {
     CODOON(false, "正式版仅支持上传到Outbase"),
     ZEPP(false, "正式版仅支持上传到Outbase"),
     KOMOT(false, "正式版仅支持上传到Outbase"),
-    SUUNTO(false, "正式版仅支持上传到Outbase");
+    SUUNTO(false, "正式版仅支持上传到Outbase"),
+    TWO_BULU(false, "正式版仅支持上传到Outbase"),
+    JOYRUN(false, "正式版仅支持上传到Outbase"),
+    STRAVA(false, "正式版仅支持上传到Outbase"),
+    POLAR(false, "正式版仅支持上传到Outbase"),
+    FITBIT(false, "正式版仅支持上传到Outbase"),
+    WITHINGS(false, "正式版仅支持上传到Outbase"),
+    TRAININGPEAKS(false, "正式版仅支持上传到Outbase");
 
     companion object {
         fun fromDataSource(ds: DataSource): UploadSupport = when (ds) {
             DataSource.OUTBASE -> OUTBASE
+            DataSource.GIANT -> GIANT
             DataSource.IGPSPORT -> IGPSPORT
             DataSource.XINGZHE -> XINGZHE
             DataSource.MAGENE -> MAGENE
@@ -138,6 +160,13 @@ enum class UploadSupport(val available: Boolean, val note: String) {
             DataSource.ZEPP -> ZEPP
             DataSource.KOMOT -> KOMOT
             DataSource.SUUNTO -> SUUNTO
+            DataSource.TWO_BULU -> TWO_BULU
+            DataSource.JOYRUN -> JOYRUN
+            DataSource.STRAVA -> STRAVA
+            DataSource.POLAR -> POLAR
+            DataSource.FITBIT -> FITBIT
+            DataSource.WITHINGS -> WITHINGS
+            DataSource.TRAININGPEAKS -> TRAININGPEAKS
         }
     }
 }
