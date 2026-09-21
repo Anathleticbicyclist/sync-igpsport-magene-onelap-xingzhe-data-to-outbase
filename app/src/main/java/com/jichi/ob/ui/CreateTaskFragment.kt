@@ -42,7 +42,9 @@ class CreateTaskFragment : Fragment() {
     private var count = 200
     private var skip = 0
     private var force = false
-    private var coordinateConvert = true
+    // v8.5.9: 迈金两个通道坐标转换独立开关（七牛云默认关 / fit_content 默认开）
+    private var mageneQiniuConvert = false
+    private var mageneFitContentConvert = true
     private var autoSync = false
     private var autoIntervalSec = 900
 
@@ -97,7 +99,8 @@ class CreateTaskFragment : Fragment() {
             skip = skip,
             incremental = incremental,
             force = force,
-            coordinateConvert = coordinateConvert,
+            mageneQiniuConvert = mageneQiniuConvert,
+            mageneFitContentConvert = mageneFitContentConvert,
             autoSync = autoSync,
             autoIntervalSec = autoIntervalSec,
             enabled = true
@@ -260,13 +263,21 @@ class CreateTaskFragment : Fragment() {
             setOnCheckedChangeListener { _, checked -> incremental = checked }
         })
         if (selectedSources.contains(DataSource.MAGENE)) {
+            // v8.5.9: 迈金坐标转换拆分为两个通道独立开关
             containerStep.addView(SwitchMaterial(requireContext()).apply {
-                text = "迈金坐标转换（GCJ-02 → WGS84）"
+                text = "迈金七牛云 GCJ-02 → WGS-84 转换"
                 textSize = 13f
-                isChecked = coordinateConvert
-                setOnCheckedChangeListener { _, checked -> coordinateConvert = checked }
+                isChecked = mageneQiniuConvert
+                setOnCheckedChangeListener { _, checked -> mageneQiniuConvert = checked }
             })
-            containerStep.addView(sectionHint("迈金 FIT 坐标为 GCJ-02（高德系），建议开启转为 WGS-84 后上传"))
+            containerStep.addView(sectionHint("七牛云直链绝大多数为 WGS-84 坐标，建议关闭"))
+            containerStep.addView(SwitchMaterial(requireContext()).apply {
+                text = "迈金 fit_content GCJ-02 → WGS-84 转换"
+                textSize = 13f
+                isChecked = mageneFitContentConvert
+                setOnCheckedChangeListener { _, checked -> mageneFitContentConvert = checked }
+            })
+            containerStep.addView(sectionHint("fit_content 通道绝大多数为 GCJ-02 坐标，建议开启"))
         }
         containerStep.addView(SwitchMaterial(requireContext()).apply {
             text = "自动同步（后台定时运行，需开启全局自动同步）"

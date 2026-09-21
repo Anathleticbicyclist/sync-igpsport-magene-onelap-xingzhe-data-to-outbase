@@ -139,15 +139,33 @@ class AutoSyncWorker(
                     val srcs = task.sources.mapNotNull { DataSource.fromShortName(it) }.distinct()
                     val tgts = task.targets.mapNotNull { DataSource.fromShortName(it) }.distinct()
                     var tSynced = 0; var tSkipped = 0; var tFailed = 0
+                    // v8.4.5: 各来源明细统计（对齐开发版 v8.4.7）
+                    val perSource = mutableMapOf<String, IntArray>()  // source.shortName -> [dl, skip, fail]
                     for (s in srcs) {
                         val r = doSync(listOf(s), tgts)
                         tSynced += r.synced; tSkipped += r.skipped; tFailed += r.failed
+                        perSource[s.shortName] = intArrayOf(r.synced, r.skipped, r.failed)
                         successDetails += r.successDetails
                         failedDetails += r.failedDetails
                     }
                     totalSynced += tSynced; totalSkipped += tSkipped; totalFailed += tFailed
                     val tgtNames = tgts.joinToString("、") { it.displayName }
                     taskLines.add("${task.name}: ${srcs.joinToString("、") { it.displayName }}→$tgtNames · 新${tSynced} 跳${tSkipped} 败${tFailed}")
+                    // v8.4.5: 后台任务跑完更新 lastRun + 各平台明细 JSON（对齐开发版 v8.4.7）
+                    val detailJson = org.json.JSONObject().apply {
+                        put("scanned", tSynced + tSkipped + tFailed)
+                        perSource.forEach { (k, v) ->
+                            put(k, org.json.JSONObject().apply {
+                                put("dl", v[0]); put("up", v[0]); put("fail", v[2])
+                            })
+                        }
+                        tgts.forEach { t ->
+                            val existing = optJSONObject(t.shortName)
+                            if (existing != null) existing.put("up", tSynced)
+                            else put(t.shortName, org.json.JSONObject().apply { put("up", tSynced) })
+                        }
+                    }.toString()
+                    prefs.upsertTask(task.copyRun(tSynced, tSkipped, tFailed, detailJson))
                 }
                 prefs.setLastAutoSyncTime(System.currentTimeMillis())
                 prefs.setLastAutoSyncResult("任务: 新上传$totalSynced 条")
@@ -418,13 +436,23 @@ class AutoSyncWorker(
             DataSource.MAGENE -> {
                 try {
                     val result = mageneApi.downloadFit(cred, record.id)
-                    // v7.6.9: 与手动同步一致——fit_content接口下载的GCJ-02坐标FIT需转WGS84；
+                    // v8.5.9: 与手动同步一致——迈金两个通道分别由独立开关控制：
+                    // ① 七牛云直链(durl)：绝大多数为 WGS-84，建议关闭（默认关）
+                    // ② fit_content 接口：绝大多数为 GCJ-02，建议开启（默认开）
                     // 后台无WebView，用纯Kotlin实现FitGcj02Fixer（算法与WebView版magene_fix.js完全一致）
-                    if (prefs.isGcj02Convert() && result.fromFitContent && isFit(result.data)) {
-                        plog("🔄 迈金fit_content(GCJ-02)坐标转WGS84...")
-                        val fixed = com.jichi.ob.util.FitGcj02Fixer.fix(result.data)
-                        if (fixed != null) fixed else result.data
-                    } else result.data
+                    if (result.fromFitContent) {
+                        if (prefs.isMageneFitContentGcj02Convert() && isFit(result.data)) {
+                            plog("🔄 迈金fit_content(GCJ-02)坐标转WGS84...")
+                            val fixed = com.jichi.ob.util.FitGcj02Fixer.fix(result.data)
+                            if (fixed != null) fixed else result.data
+                        } else result.data
+                    } else {
+                        if (prefs.isMageneQiniuGcj02Convert() && isFit(result.data)) {
+                            plog("🔄 迈金七牛云通道(GCJ-02)坐标转WGS84...")
+                            val fixed = com.jichi.ob.util.FitGcj02Fixer.fix(result.data)
+                            if (fixed != null) fixed else result.data
+                        } else result.data
+                    }
                 } catch (_: Exception) { null }
             }
             DataSource.BLACKBIRD -> blackbirdApi.downloadActivity(cred, record.id)

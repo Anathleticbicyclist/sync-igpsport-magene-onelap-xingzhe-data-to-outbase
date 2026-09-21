@@ -223,8 +223,11 @@ class SyncFragment : Fragment() {
         })
         row3.addView(TextView(ctx).apply {
             text = "  最近: " + when {
-                task.lastRunOk + task.lastRunSkip + task.lastRunFail == 0 -> "未运行"
-                else -> "成功${task.lastRunOk} 跳过${task.lastRunSkip} 失败${task.lastRunFail}"
+                task.lastRunTime == 0L -> "未运行"
+                else -> {
+                    val t = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(task.lastRunTime))
+                    "$t 成功${task.lastRunOk} 跳${task.lastRunSkip} 败${task.lastRunFail}"
+                }
             }
             textSize = 10f
             setTextColor(ctx.getColor(R.color.text_secondary))
@@ -246,10 +249,110 @@ class SyncFragment : Fragment() {
                     .show()
             }
         }
+        val detailBtn = TextView(ctx).apply {
+            text = "📊 详情"
+            textSize = 11f
+            setTextColor(ctx.getColor(R.color.primary))
+            setPadding(dpTask(8f), dpTask(2f), dpTask(8f), dpTask(2f))
+            setOnClickListener { showTaskDetail(task) }
+        }
+        row3.addView(detailBtn)
         row3.addView(delBtn)
         inner.addView(row3, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dpTask(4f) })
         card.addView(inner)
         return card
+    }
+
+    /** v8.4.5: 同步任务详情弹窗 —— 各平台上传/下载统计（对齐开发版 v8.4.4） */
+    private fun showTaskDetail(task: com.jichi.ob.model.SyncTask) {
+        val ctx = requireContext()
+        val cache = try { com.jichi.ob.util.ActivityCache.get(ctx) } catch (_: Exception) { null }
+        val sb = StringBuilder()
+        sb.appendLine("任务：${task.name}")
+        sb.appendLine("链路：${task.sources.mapNotNull { DataSource.fromShortName(it) }.joinToString("、") { it.displayName }} → ${task.targets.mapNotNull { DataSource.fromShortName(it) }.joinToString("、") { it.displayName }}")
+        sb.appendLine("")
+        sb.appendLine("── 本次运行明细 ──")
+        if (task.lastRunTime > 0L) {
+            val runTime = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(task.lastRunTime))
+            sb.appendLine("运行时间：$runTime")
+            var scanned = 0
+            if (task.lastRunDetail.isNotBlank()) {
+                try { scanned = org.json.JSONObject(task.lastRunDetail).optInt("scanned", 0) } catch (_: Exception) {}
+            }
+            if (scanned > 0) sb.appendLine("扫描活动：$scanned 条")
+            sb.appendLine("本次结果：成功 ${task.lastRunOk} · 跳过 ${task.lastRunSkip} · 失败 ${task.lastRunFail}")
+            var hasDetail = false
+            if (task.lastRunDetail.isNotBlank()) {
+                try {
+                    val o = org.json.JSONObject(task.lastRunDetail)
+                    val keys = o.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        if (key == "scanned") continue
+                        val ds = DataSource.fromShortName(key) ?: continue
+                        val p = o.getJSONObject(key)
+                        val dl = p.optInt("dl", 0)
+                        val up = p.optInt("up", 0)
+                        val pf = p.optInt("fail", 0)
+                        val parts = mutableListOf<String>()
+                        if (dl > 0) parts += "下载 $dl"
+                        if (up > 0) parts += "上传 $up"
+                        if (pf > 0) parts += "失败 $pf"
+                        if (parts.isNotEmpty()) { sb.appendLine("  ${ds.displayName}：${parts.joinToString(" · ")}"); hasDetail = true }
+                    }
+                } catch (_: Exception) {}
+            }
+            if (!hasDetail) sb.appendLine("  无新增活动需要下载/上传")
+        } else {
+            sb.appendLine("（尚未运行）")
+        }
+        if (task.recentRuns.isNotEmpty()) {
+            sb.appendLine("")
+            sb.appendLine("── 历史运行（最近5次）──")
+            task.recentRuns.forEachIndexed { idx, json ->
+                try {
+                    val o = org.json.JSONObject(json)
+                    val t = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(o.optLong("time")))
+                    val ok = o.optInt("ok"); val sk = o.optInt("skip"); val fl = o.optInt("fail")
+                    sb.appendLine("${if (idx==0)"▶"else" "}$t  成功$ok 跳$sk 败$fl")
+                } catch (_: Exception) {}
+            }
+        }
+        sb.appendLine("")
+        sb.appendLine("── 累计统计 ──")
+        task.sources.forEach { sn ->
+            val ds = DataSource.fromShortName(sn) ?: return@forEach
+            val st = cache?.getPlatformStat(sn)
+            val lastSync = if ((st?.lastSync ?: 0L) > 0L)
+                java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(st!!.lastSync))
+            else "—"
+            sb.appendLine("${ds.displayName}（下载源）")
+            sb.appendLine("  累计下载 ${st?.ok ?: 0} · 失败 ${st?.fail ?: 0}")
+            sb.appendLine("  最后同步：$lastSync")
+        }
+        task.targets.forEach { sn ->
+            val ds = DataSource.fromShortName(sn) ?: return@forEach
+            val st = cache?.getPlatformStat(sn)
+            val lastSync = if ((st?.lastSync ?: 0L) > 0L)
+                java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(st!!.lastSync))
+            else "—"
+            sb.appendLine("${ds.displayName}（上传目标）")
+            sb.appendLine("  累计上传 ${st?.skip ?: 0} · 失败 ${st?.fail ?: 0}")
+            sb.appendLine("  最后同步：$lastSync")
+        }
+        val scrollView = android.widget.ScrollView(ctx)
+        val tv = android.widget.TextView(ctx).apply {
+            text = sb.toString()
+            textSize = 13f
+            setPadding(dpTask(16f), dpTask(12f), dpTask(16f), dpTask(12f))
+            setTextColor(ctx.getColor(R.color.text_primary))
+        }
+        scrollView.addView(tv)
+        androidx.appcompat.app.AlertDialog.Builder(ctx)
+            .setTitle("同步详情")
+            .setView(scrollView)
+            .setPositiveButton("关闭", null)
+            .show()
     }
 
     private fun dpTask(v: Float): Int = (v * resources.displayMetrics.density).toInt()

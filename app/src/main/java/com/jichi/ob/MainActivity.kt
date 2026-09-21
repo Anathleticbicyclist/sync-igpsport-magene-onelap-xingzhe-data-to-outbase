@@ -368,6 +368,21 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    /** v8.4.5: 回到前台时轻量刷新登录卡片统计 + 任务区状态（对齐开发版 v8.4.4，修复自动同步后卡片不更新） */
+    override fun onResume() {
+        super.onResume()
+        try { loginFragment.refreshStats() } catch (_: Exception) {}
+        try { syncFragment.refreshTaskState() } catch (_: Exception) {}
+    }
+
+    /** v8.4.5: 同步/任务完成后刷新首页登录卡片（统计行 + 条数徽标，对齐开发版） */
+    internal fun refreshLoginCards() {
+        runOnUiThread {
+            try { loginFragment.refreshStats() } catch (_: Exception) {}
+            try { loginFragment.updateStatus() } catch (_: Exception) {}
+        }
+    }
+
     internal fun openLogin(type: String, url: String) {
         appendLog("🔐 打开登录页...")
         val intent = Intent(this, LoginWebActivity::class.java)
@@ -1749,6 +1764,11 @@ class MainActivity : AppCompatActivity() {
                         cacheAddStat(ds, arr[0], arr[1], arr[2], "手动同步→Outbase 成功${arr[0]} 跳过${arr[1]} 失败${arr[2]}")
                     }
                 }
+                // v8.4.5: 同步完成后刷新登录页卡片统计（对齐开发版）
+                runOnUiThread {
+                    try { loginFragment.refreshStats() } catch (_: Exception) {}
+                    try { loginFragment.updateStatus() } catch (_: Exception) {}
+                }
             } catch (e: Exception) { Log.e(TAG, "sync error", e); appendLog("❌ 同步异常: ${e.message}") }
             finally { setSyncing(false) }
         }
@@ -1815,16 +1835,23 @@ class MainActivity : AppCompatActivity() {
         refreshTaskUi()
         taskJob = lifecycleScope.launch(Dispatchers.IO) {
             var ok = 0; var skipped = 0; var failed = 0
-            val statMap = HashMap<String, IntArray>()
+            // v8.4.5: 本次各平台明细统计（对齐开发版 v8.4.7，ConcurrentHashMap 线程安全）
+            val perPlatform = java.util.concurrent.ConcurrentHashMap<String, IntArray>()
+            fun bump(short: String, dl: Int = 0, up: Int = 0, fail: Int = 0) {
+                val arr = perPlatform.getOrPut(short) { IntArray(3) }
+                synchronized(arr) { arr[0] += dl; arr[1] += up; arr[2] += fail }
+            }
+            var totalScanned = 0  // 本次扫描了多少条活动
             try {
                 for (source in validSources) {
                     if (!taskActive) break
                     appendLog("📥 [${source.displayName}] 获取活动列表...")
                     val activities = try { fetchActivities(source, task.skip, task.count) } catch (e: Exception) {
                         appendLog("❌ ${source.displayName} 获取列表失败: ${e.message}")
-                        failed++; continue
+                        failed++; bump(source.shortName, fail = 1); continue
                     }
                     appendLog("📋 获取到 ${activities.size} 条活动")
+                    totalScanned += activities.size
                     cacheUpsertActivities(source, activities)
                     flushGarminDebugLogs()
                     var list = activities
@@ -1846,8 +1873,9 @@ class MainActivity : AppCompatActivity() {
                             appendLog("❌ 下载失败: ${e.message}"); failed++; continue
                         }
                         if (fileData == null || fileData.size < 100) {
-                            appendLog("❌ 文件数据无效"); failed++; continue
+                            appendLog("❌ 文件数据无效"); failed++; bump(source.shortName, fail = 1); continue
                         }
+                        bump(source.shortName, dl = 1)
                         val ext = if (isFit(fileData)) "fit" else "gpx"
                         val localName = FileNameGenerator.generate(source, act, ext)
                         try {
@@ -1865,9 +1893,9 @@ class MainActivity : AppCompatActivity() {
                             else com.jichi.ob.api.UploadEngine.UploadResult(success = false, skipped = false, message = "登录态无效")
                             val tCost = System.currentTimeMillis() - t0
                             val k = "${source.shortName}_${act.id}_to_${target.shortName}"
-                            if (result.success) { ok++; prefs.addSyncedId(k); statMap.getOrPut(source.shortName){IntArray(3)}[0]++; appendLog("✅ 上传成功(${tCost}ms): ${result.message}") }
-                            else if (result.skipped) { skipped++; prefs.addSyncedId(k); statMap.getOrPut(source.shortName){IntArray(3)}[1]++; appendLog("⏭️ 已存在跳过: ${result.message}") }
-                            else { failed++; statMap.getOrPut(source.shortName){IntArray(3)}[2]++; appendLog("❌ 上传失败(${tCost}ms): ${result.message}") }
+                            if (result.success) { ok++; prefs.addSyncedId(k); bump(source.shortName, up = 1); appendLog("✅ 上传成功(${tCost}ms): ${result.message}") }
+                            else if (result.skipped) { skipped++; prefs.addSyncedId(k); appendLog("⏭️ 已存在跳过: ${result.message}") }
+                            else { failed++; bump(source.shortName, fail = 1); appendLog("❌ 上传失败(${tCost}ms): ${result.message}") }
                         }
                         delay(150)
                     }
@@ -1877,16 +1905,26 @@ class MainActivity : AppCompatActivity() {
                 appendLog("❌ 任务异常: ${e.message}")
             } finally {
                 taskActive = false
-                prefs.upsertTask(task.copyRun(ok, skipped, failed))
+                // v8.4.5: 构造各平台明细 JSON（含扫描总数，对齐开发版 v8.4.7）
+                val detailJson = org.json.JSONObject().apply {
+                    put("scanned", totalScanned)
+                    perPlatform.forEach { (k, v) ->
+                        put(k, org.json.JSONObject().apply {
+                            put("dl", v[0]); put("up", v[1]); put("fail", v[2])
+                        })
+                    }
+                }.toString()
+                prefs.upsertTask(task.copyRun(ok, skipped, failed, detailJson))
                 appendLog("━━━━━━━━━━━━━━━━━━━━━━")
                 appendLog("📦 任务完成: 成功$ok / 跳过$skipped / 失败$failed")
-                for ((p, arr) in statMap) {
+                for ((p, arr) in perPlatform) {
                     DataSource.fromShortName(p)?.let { ds ->
-                        cacheAddStat(ds, arr[0], arr[1], arr[2], "任务「${task.name}」成功${arr[0]} 跳过${arr[1]} 失败${arr[2]}")
+                        cacheAddStat(ds, arr[0], arr[1], arr[2], "任务「${task.name}」下载${arr[0]} 上传${arr[1]} 失败${arr[2]}")
                     }
                 }
                 runOnUiThread {
                     refreshTaskUi()
+                    refreshLoginCards()
                 }
             }
         }
@@ -2131,16 +2169,22 @@ class MainActivity : AppCompatActivity() {
             DataSource.MAGENE -> {
                 try {
                     val result = mageneApi.downloadFit(cred, record.id)
-                    // 迈金坐标转换: 仅对fit_content接口下载的GCJ-02坐标FIT执行转换
-                    // 七牛云直链(durl)下载的已是WGS84，不转换
-                    if (prefs.isGcj02Convert() && result.fromFitContent && isFit(result.data)) {
-                        appendLog("🔄 迈金fit_content来源(GCJ-02)，执行WGS84转换...")
-                        convertFitCoordinates(result.data)
+                    // v8.5.9: 迈金坐标转换拆分为两个通道独立开关
+                    // ① 七牛云直链(durl)：绝大多数为 WGS-84，建议关闭（默认关），开启后执行 GCJ-02→WGS-84
+                    // ② fit_content 接口：绝大多数为 GCJ-02，建议开启（默认开）
+                    if (result.fromFitContent) {
+                        if (prefs.isMageneFitContentGcj02Convert() && isFit(result.data)) {
+                            appendLog("🔄 迈金fit_content(GCJ-02)坐标转WGS84...")
+                            convertFitCoordinates(result.data)
+                        } else result.data
                     } else {
-                        if (prefs.isGcj02Convert() && !result.fromFitContent) {
+                        if (prefs.isMageneQiniuGcj02Convert() && isFit(result.data)) {
+                            appendLog("🔄 迈金七牛云通道(GCJ-02)坐标转WGS84...")
+                            convertFitCoordinates(result.data)
+                        } else {
                             appendLog("ℹ️ 迈金七牛云直链(WGS84)，无需转换")
+                            result.data
                         }
-                        result.data
                     }
                 } catch (e: MageneApi.NoFileException) { null }
             }

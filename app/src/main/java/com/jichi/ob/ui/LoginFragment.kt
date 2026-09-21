@@ -186,7 +186,7 @@ class LoginFragment : Fragment() {
     }
 
     /** v8.4.2: 异步刷新已登录平台的累计统计 + 缓存条数（IO 查询，主线程更新） */
-    private fun refreshStats() {
+    fun refreshStats() {
         val act = activity as? MainActivity ?: return
         val logged = LOGIN_PLATFORMS.filter { prefs.isLoggedIn(it) }
         if (logged.isEmpty()) return
@@ -328,8 +328,16 @@ class LoginFragment : Fragment() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20f).toInt(), dp(8f).toInt(), dp(20f).toInt(), dp(4f).toInt())
         }
+        // v8.6.0: 内容包进 ScrollView（最近记录+日志过长时按钮不再被挤出屏幕），按钮行固定在底部
+        val contentLayout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val scroll = android.widget.ScrollView(ctx).apply {
+            addView(contentLayout, android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        layout.addView(scroll, LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         fun infoRow(label: String, value: String, color: Int) {
-            layout.addView(TextView(ctx).apply {
+            contentLayout.addView(TextView(ctx).apply {
                 text = "$label $value"
                 textSize = 13f
                 setTextColor(ctx.getColor(color))
@@ -345,7 +353,7 @@ class LoginFragment : Fragment() {
             setTextColor(ctx.getColor(R.color.text_primary))
             setPadding(0, dp(6f).toInt(), 0, 0)
         }
-        layout.addView(tvStat)
+        contentLayout.addView(tvStat)
         // v8.4.2: 最近运动记录（缓存库最近5条；标题行可点开独立弹窗）
         val tvRecentTitle = TextView(ctx).apply {
             text = "最近运动记录（缓存） ▸"
@@ -369,8 +377,8 @@ class LoginFragment : Fragment() {
             setPadding(0, dp(8f).toInt(), 0, dp(8f).toInt())
         }
         if (logged) {
-            layout.addView(tvRecentTitle)
-            layout.addView(tvRecents)
+            contentLayout.addView(tvRecentTitle)
+            contentLayout.addView(tvRecents)
             val fetchRow = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
@@ -389,10 +397,10 @@ class LoginFragment : Fragment() {
                 }
             }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(6f).toInt() })
             fetchRow.addView(btnAllRecords, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(6f).toInt() })
-            layout.addView(fetchRow)
+            contentLayout.addView(fetchRow)
             // iGPSPORT 专属：批量修复缺失时间（列表接口无时间，FIT 文件自带时间）
             if (ds == DataSource.IGPSPORT) {
-                layout.addView(TextView(ctx).apply {
+                contentLayout.addView(TextView(ctx).apply {
                     text = "修复缺失时间（1970 记录）"
                     textSize = 12f
                     gravity = android.view.Gravity.CENTER
@@ -423,8 +431,8 @@ class LoginFragment : Fragment() {
             setPadding(0, dp(4f).toInt(), 0, 0)
         }
         if (logged) {
-            layout.addView(tvLogTitle)
-            layout.addView(tvLogs)
+            contentLayout.addView(tvLogTitle)
+            contentLayout.addView(tvLogs)
         }
         if (isGarmin) {
             infoRow("提示：", "若登录遇「冷却中」拦截，可先清空风控后再试", R.color.text_secondary)
@@ -511,6 +519,8 @@ class LoginFragment : Fragment() {
                         }
                         "[" + t + "] " + tag + (if (l.msg.isBlank()) "" else " " + l.msg)
                     }
+                    // v8.6.0: 对齐开发版——内容异步填充后保持弹窗显示（防内容更新导致弹窗关闭）
+                    if (dlg?.isShowing == true) dlg?.show()
                 }
             }
         }
@@ -526,9 +536,13 @@ class LoginFragment : Fragment() {
             setTextColor(ctx.getColor(R.color.text_secondary))
             setPadding(dp(24f).toInt(), dp(12f).toInt(), dp(24f).toInt(), dp(12f).toInt())
         }
+        // v8.6.0: 记录列表包进 ScrollView，超长时可滚动查看（按钮不被挤出屏幕）
+        val scroll = android.widget.ScrollView(ctx).apply {
+            addView(body, android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
         androidx.appcompat.app.AlertDialog.Builder(ctx)
             .setTitle("${ds.displayName} · 最近运动记录")
-            .setView(body)
+            .setView(scroll)
             .setNegativeButton("关闭", null)
             .show()
         lifecycleScope.launch(Dispatchers.IO) {
@@ -557,9 +571,13 @@ class LoginFragment : Fragment() {
             setTextColor(ctx.getColor(R.color.text_secondary))
             setPadding(dp(24f).toInt(), dp(12f).toInt(), dp(24f).toInt(), dp(12f).toInt())
         }
+        // v8.6.0: 日志列表包进 ScrollView，超长时可滚动查看（按钮不被挤出屏幕）
+        val scroll = android.widget.ScrollView(ctx).apply {
+            addView(body, android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
         androidx.appcompat.app.AlertDialog.Builder(ctx)
             .setTitle("${ds.displayName} · 平台同步日志")
-            .setView(body)
+            .setView(scroll)
             .setNegativeButton("关闭", null)
             .show()
         lifecycleScope.launch(Dispatchers.IO) {

@@ -56,14 +56,17 @@ class SyncSettingsFragment : Fragment() {
         val tvCount = view.findViewById<TextView>(R.id.tvCount)
         val sliderSkip = view.findViewById<Slider>(R.id.sliderSkip)
         val tvSkip = view.findViewById<TextView>(R.id.tvSkip)
-        val switchGcj02 = view.findViewById<SwitchMaterial>(R.id.switchGcj02)
+        val switchMageneQiniu = view.findViewById<SwitchMaterial>(R.id.switchMageneQiniu)
+        val switchMageneFitContent = view.findViewById<SwitchMaterial>(R.id.switchMageneFitContent)
         val switchForce = view.findViewById<SwitchMaterial>(R.id.switchForceRetransmit)
 
         sliderCount.addOnChangeListener { _, v, _ -> tvCount.text = v.toInt().toString() }
         sliderSkip.addOnChangeListener { _, v, _ -> tvSkip.text = v.toInt().toString() }
         tvCount.setOnClickListener { showInputDialog("同步数量", sliderCount, tvCount, 1, 1000) }
         tvSkip.setOnClickListener { showInputDialog("跳过前N条", sliderSkip, tvSkip, 0, 10000) }
-        switchGcj02.setOnCheckedChangeListener { _, checked -> prefs.setGcj02Convert(checked) }
+        // v8.5.9: 迈金坐标转换拆分为两个通道独立开关
+        switchMageneQiniu.setOnCheckedChangeListener { _, checked -> prefs.setMageneQiniuGcj02Convert(checked) }
+        switchMageneFitContent.setOnCheckedChangeListener { _, checked -> prefs.setMageneFitContentGcj02Convert(checked) }
         switchForce.setOnCheckedChangeListener { _, checked ->
             prefs.setForceRetransmit(checked)
             updateForceRetransmitState()
@@ -246,7 +249,9 @@ class SyncSettingsFragment : Fragment() {
         }
         updateSourceCountLabel()
         updateSourceChips()
-        view.findViewById<SwitchMaterial>(R.id.switchGcj02).isChecked = prefs.isGcj02Convert()
+        // v8.5.9: 迈金两个通道开关分别恢复状态（七牛云默认关 / fit_content 默认开）
+        view.findViewById<SwitchMaterial>(R.id.switchMageneQiniu).isChecked = prefs.isMageneQiniuGcj02Convert()
+        view.findViewById<SwitchMaterial>(R.id.switchMageneFitContent).isChecked = prefs.isMageneFitContentGcj02Convert()
         val saveDir = view.findViewById<TextView>(R.id.tvSaveDir)
         try {
             saveDir.text = com.jichi.ob.MainActivity.SAVE_DIR.absolutePath

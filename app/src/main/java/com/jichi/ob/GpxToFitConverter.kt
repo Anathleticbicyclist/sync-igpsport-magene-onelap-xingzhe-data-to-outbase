@@ -27,8 +27,9 @@ object GpxToFitConverter {
         0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400
     )
 
+    // v7.9.8: 兼容 lat/lon 与 lon/lat 两种属性顺序（部分平台 GPX 为 lon 在前）
     private val TRKPT_RE = Pattern.compile(
-        "<trkpt\\s+lat=\"([-\\d.]+)\"\\s+lon=\"([-\\d.]+)\"[^>]*>(.*?)</trkpt>",
+        "<trkpt\\s+(?:lat=\"([-\\d.]+)\"\\s+lon=\"([-\\d.]+)\"|lon=\"([-\\d.]+)\"\\s+lat=\"([-\\d.]+)\")[^>]*>(.*?)</trkpt>",
         Pattern.DOTALL
     )
     private val ELE_RE = Pattern.compile("<ele>([-\\d.]+)</ele>")
@@ -36,6 +37,27 @@ object GpxToFitConverter {
     private val HR_RE = Pattern.compile("<gpxtpx:hr>(\\d+)</gpxtpx:hr>|<hr>(\\d+)</hr>")
     private val CAD_RE = Pattern.compile("<gpxtpx:cad>(\\d+)</gpxtpx:cad>|<cadence>(\\d+)</cadence>|<cad>(\\d+)</cad>")
     private val POWER_RE = Pattern.compile("<gpxtpx:power>(\\d+)</gpxtpx:power>|<power>(\\d+)</power>")
+    // v8.1.4: Keep cycling 单点兜底时透传的元数据（写入 GPX <extensions>）
+    private val META_DIST_RE = Pattern.compile("<jichi:distance>([\\d.]+)</jichi:distance>")
+    private val META_DUR_RE = Pattern.compile("<jichi:duration>(\\d+)</jichi:duration>")
+    private val META_CAL_RE = Pattern.compile("<jichi:calorie>(\\d+)</jichi:calorie>")
+    private val META_AVGHR_RE = Pattern.compile("<jichi:avgHr>(\\d+)</jichi:avgHr>")
+    private val META_MAXHR_RE = Pattern.compile("<jichi:maxHr>(\\d+)</jichi:maxHr>")
+    private val META_AVGCAD_RE = Pattern.compile("<jichi:avgCadence>([\\d.]+)</jichi:avgCadence>")
+
+    /** v8.1.4: Keep cycling 单点兜底元数据（distance米/duration秒/calorie千卡/avgHr/maxHr） */
+    data class Meta(val dist: Double = 0.0, val dur: Long = 0L, val cal: Int = 0, val avgHr: Int = 0, val maxHr: Int = 0, val avgCadence: Int = 0) {
+        val valid: Boolean get() = dist > 0.0 || dur > 0L
+    }
+
+    private fun parseMeta(gpx: String): Meta = Meta(
+        META_DIST_RE.matcher(gpx).let { if (it.find()) it.group(1).toDoubleOrNull() ?: 0.0 else 0.0 },
+        META_DUR_RE.matcher(gpx).let { if (it.find()) it.group(1).toLongOrNull() ?: 0L else 0L },
+        META_CAL_RE.matcher(gpx).let { if (it.find()) it.group(1).toIntOrNull() ?: 0 else 0 },
+        META_AVGHR_RE.matcher(gpx).let { if (it.find()) it.group(1).toIntOrNull() ?: 0 else 0 },
+        META_MAXHR_RE.matcher(gpx).let { if (it.find()) it.group(1).toIntOrNull() ?: 0 else 0 },
+        META_AVGCAD_RE.matcher(gpx).let { if (it.find()) it.group(1).toDoubleOrNull()?.toInt() ?: 0 else 0 },
+    )
 
     data class TrackPoint(val lat: Double, val lon: Double, val ele: Double, val ts: Long, val hr: Int = 0, val cad: Int = 0, val power: Int = 0)
 
@@ -60,23 +82,13 @@ object GpxToFitConverter {
         return crc
     }
 
-    /** v8.4.0: 公开 GPX 解析（数据合并 TrackMerger 依赖） */
-    fun convertPoints(pts: List<TrackPoint>, sport: Int = 2, metaDistKeep: Double = 0.0, metaDurKeep: Long = 0L, subSport: Int = 0): ByteArray {
-        require(pts.isNotEmpty()) { "无有效轨迹点" }
-        val startUnix = pts.firstOrNull { it.ts > 0L }?.ts ?: (System.currentTimeMillis() / 1000)
-        val body = buildFitBody(pts, startUnix, sport, subSport, metaDistKeep, metaDurKeep)
-        return body
-    }
-
-    fun parseGpxBytes(gpx: ByteArray): List<TrackPoint> = parseGpx(String(gpx, Charsets.UTF_8))
-
     private fun parseGpx(gpx: String): List<TrackPoint> {
         val pts = mutableListOf<TrackPoint>()
         val m = TRKPT_RE.matcher(gpx)
         while (m.find() && pts.size < MAX_POINTS) {
-            val lat = m.group(1).toDoubleOrNull() ?: continue
-            val lon = m.group(2).toDoubleOrNull() ?: continue
-            val inner = m.group(3)
+            val lat = m.group(1)?.toDoubleOrNull() ?: m.group(4)?.toDoubleOrNull() ?: continue
+            val lon = m.group(2)?.toDoubleOrNull() ?: m.group(3)?.toDoubleOrNull() ?: continue
+            val inner = m.group(5)
             var ele = 0.0
             ELE_RE.matcher(inner).let { if (it.find()) ele = it.group(1).toDoubleOrNull() ?: 0.0 }
             var ts = 0L
@@ -127,7 +139,9 @@ object GpxToFitConverter {
         fun f(fn: Int, sz: Int, bt: Int) = apply { fields.add(Triple(fn, sz, bt)) }
         fun build(): ByteArray {
             val out = ByteArrayOutputStream()
-            u8(out, 0x40 or local)   // definition header bit6
+            // FIT 协议：Definition 消息头 = bit6（0x40|local），bit7=1 是 Compressed Timestamp 消息。
+            // 已验证：Garmin FIT SDK 21.x 用 HDR_TYPE_DEF_BIT=0x40 判定定义消息，此写法正确（勿改 0x80）。
+            u8(out, 0x40 or local)
             u8(out, 0)               // reserved
             u8(out, 0)               // architecture little-endian
             u16(out, global)
@@ -139,34 +153,79 @@ object GpxToFitConverter {
 
     private val NAME_RE = Pattern.compile("<name>([^<]+)</name>")
 
-    /** 从 GPX <name> 里的运动类型标记解析 FIT sport（Keep v7.9.2 写入 "from keep - running/cycling/hiking"）。
-     *  识别失败返回 -1（由调用方决定兜底）。FIT sport 枚举：1=running 2=cycling 17=hiking */
-    private fun detectSportFromGpx(gpx: String): Int {
+    /** 从 GPX <name> 运动类型标记解析 FIT (sport, sub_sport)。
+     *  Keep v7.9.2 写 "from keep - running/cycling/hiking"，v8.1.6 起写精确 dataType
+     *  （outdoorCycling/indoorCycling/mountaineering/outdoorRunning/indoorRunning/outdoorWalking/
+     *   indoorWalking/outdoorSwimming/indoorSwimming 等）。
+     *  FIT sport 枚举：1=running 2=cycling 5=swimming 10=training 11=walking 16=mountaineering
+     *  17=hiking 18=multisport；sub_sport：2=street 3=trail 6=indoor_cycling 7=road 8=mountain
+     *  14=indoor_running 16=indoor_walking 21=indoor_swimming 30=open_water。
+     *  识别失败返回 Pair(-1, 0)（由调用方决定兜底）。 */
+    private fun detectSportFromGpx(gpx: String): Pair<Int, Int> {
         return try {
             val m = NAME_RE.matcher(gpx)
-            if (!m.find()) return -1
+            if (!m.find()) return Pair(-1, 0)
             val name = m.group(1).lowercase()
             when {
-                name.contains("cycling") || name.contains("riding") || name.contains("bike") -> 2
-                name.contains("hiking") || name.contains("walking") || name.contains("trail") -> 17
-                name.contains("running") || name.contains("run") -> 1
-                else -> -1
+                // 骑行（室内优先——indoorCycling 含 "cycling" 子串，必须先匹配）
+                name.contains("indoorcycling") || name.contains("spinning") -> Pair(2, 6)   // indoor_cycling
+                name.contains("cycling") || name.contains("riding") || name.contains("bike") || name.contains("ebike") -> Pair(2, 7) // road
+                // 跑步
+                name.contains("indoorrunning") || name.contains("treadmill") -> Pair(1, 14) // indoor_running
+                name.contains("running") || name.contains("run") -> Pair(1, 2)              // street
+                // 登山（mountaineering 不能落到 hiking，先匹配）
+                name.contains("mountaineering") || name.contains("mountaineer") -> Pair(16, 0)
+                name.contains("hiking") || name.contains("hike") || name.contains("trail") -> Pair(17, 3)
+                // 步行
+                name.contains("indoorwalking") -> Pair(11, 16)                              // indoor_walking
+                name.contains("walking") || name.contains("walk") -> Pair(11, 2)
+                // 游泳
+                name.contains("indoorswimming") -> Pair(5, 21)                              // indoor_swimming
+                name.contains("swimming") || name.contains("swim") -> Pair(5, 30)           // open_water
+                // 铁三 / 健身
+                name.contains("triathlon") || name.contains("multisport") -> Pair(18, 0)
+                name.contains("fitness") || name.contains("workout") || name.contains("training") -> Pair(10, 0)
+                else -> Pair(-1, 0)
             }
-        } catch (_: Exception) { -1 }
+        } catch (_: Exception) { Pair(-1, 0) }
     }
 
     /** 转换GPX字节为FIT字节。sport: FIT sport 枚举（1=跑步 running，2=骑行 cycling，17=徒步 hiking）。
-     *  默认 -1 = 自动从 GPX <name> 运动类型标记解析；解析失败或未标记时按骑行(2)兜底（兼容历史行为） */
+     *  默认 -1 = 自动从 GPX <name> 运动类型标记解析（v8.1.6 起解析 (sport, sub_sport) 完整映射）；
+     *  解析失败或未标记时按骑行(2)兜底（兼容历史行为）。
+     *  v8.1.4: 若 GPX 含 <jichi:*> 元数据（Keep cycling 单点兜底），单点轨迹的
+     *  total_distance/时长/热量/心率 用元数据，目标平台不再显示 0 里程。 */
     fun convert(gpx: ByteArray, sport: Int = -1): ByteArray {
         val gpxStr = String(gpx, Charsets.UTF_8)
         val pts = parseGpx(gpxStr)
         require(pts.isNotEmpty()) { "GPX无有效轨迹点" }
         val startUnix = pts.firstOrNull { it.ts > 0L }?.ts ?: (System.currentTimeMillis() / 1000)
-        val resolvedSport = if (sport > 0) sport else {
-            detectSportFromGpx(gpxStr).takeIf { it > 0 } ?: 2
-        }
-        val body = buildFitBody(pts, startUnix, resolvedSport)
+        val (detSport, detSub) = if (sport > 0) Pair(sport, 0) else detectSportFromGpx(gpxStr)
+        val resolvedSport = if (detSport > 0) detSport else 2
+        val meta = parseMeta(gpxStr)
+        // v8.1.4: 单点兜底时用 Keep 详情元数据覆盖 total_distance/时长（cal/hr 单点场景无真实值，按现有规则计算）
+        return convertPoints(pts, resolvedSport, meta.dist, meta.dur, detSub, meta.avgCadence)
+    }
 
+    /**
+     * v7.9.7: 轨迹合并入口——从已解析的 TrackPoint 列表直接生成标准合法 FIT。
+     * 与 [convert] 共用 buildFitBody + header 组装，保证合并产物与单条转换同样合法（含 header/CRC）。
+     * @param sport FIT sport 枚举（1=跑步，2=骑行，17=徒步）
+     * @param subSport FIT sub_sport 枚举（0=generic，2=street，6=indoor_cycling，7=road 等；0=不指定）
+     * @param metaDistKeep / metaDurKeep 单点兜底元数据（仅单点轨迹时覆盖 total_distance/时长；0=不覆盖）
+     */
+    fun convertPoints(pts: List<TrackPoint>, sport: Int = 2, metaDistKeep: Double = 0.0, metaDurKeep: Long = 0L, subSport: Int = 0, metaAvgCadence: Int = 0): ByteArray {
+        require(pts.isNotEmpty()) { "无有效轨迹点" }
+        val startUnix = pts.firstOrNull { it.ts > 0L }?.ts ?: (System.currentTimeMillis() / 1000)
+        val body = buildFitBody(pts, startUnix, sport, subSport, metaDistKeep, metaDurKeep)
+        return buildFitFile(body)
+    }
+
+    /** v7.9.7: 公开 GPX 解析入口（轨迹合并复用；私有 parseGpx 仅供内部单条转换） */
+    fun parseGpxBytes(gpx: ByteArray): List<TrackPoint> = parseGpx(String(gpx, Charsets.UTF_8))
+
+    /** 组装标准 FIT 文件：14字节header + body + bodyCRC */
+    private fun buildFitFile(body: ByteArray): ByteArray {
         val header = ByteArray(14)
         header[0] = 14
         header[1] = 0x10
@@ -366,3 +425,5 @@ object GpxToFitConverter {
         return out.toByteArray()
     }
 }
+
+

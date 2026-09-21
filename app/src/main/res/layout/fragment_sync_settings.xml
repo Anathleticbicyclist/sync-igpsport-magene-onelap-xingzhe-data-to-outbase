@@ -124,11 +124,26 @@
                     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
                         android:orientation="vertical">
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                            android:text="迈金坐标转换" android:textSize="14sp" android:textColor="@color/text_primary" />
+                            android:text="迈金七牛云 GCJ-02 → WGS-84 转换" android:textSize="14sp" android:textColor="@color/text_primary" />
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                            android:text="GCJ-02 → WGS84" android:textSize="12sp" android:textColor="@color/text_secondary" />
+                            android:text="该通道绝大多数为 WGS-84 坐标，建议关闭" android:textSize="12sp" android:textColor="@color/text_secondary" android:maxLines="2" />
                     </LinearLayout>
-                    <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchGcj02"
+                    <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchMageneQiniu"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content" android:minWidth="0dp" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/bg_line" android:layout_marginTop="6dp" />
+
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="horizontal" android:gravity="center_vertical" android:paddingTop="6dp">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                        android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="迈金 fit_content GCJ-02 → WGS-84 转换" android:textSize="14sp" android:textColor="@color/text_primary" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="该通道绝大多数为 GCJ-02 坐标，建议开启" android:textSize="12sp" android:textColor="@color/text_secondary" android:maxLines="2" />
+                    </LinearLayout>
+                    <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchMageneFitContent"
                         android:layout_width="wrap_content" android:layout_height="wrap_content" android:minWidth="0dp" />
                 </LinearLayout>
 

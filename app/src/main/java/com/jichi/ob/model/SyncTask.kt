@@ -17,14 +17,18 @@ data class SyncTask(
     val skip: Int = 0,              // 跳过前 N 条
     val incremental: Boolean = true,// 增量：跳过缓存已有记录；false=全量
     val force: Boolean = false,     // 忽略上传记忆强制重传
-    val coordinateConvert: Boolean = true, // v8.2.3.1: 迈金坐标转换（GCJ-02→WGS84），默认开
+    val coordinateConvert: Boolean = true, // v8.2.3.1: 迈金坐标转换（GCJ-02→WGS84），默认开（兼容旧字段）
+    val mageneQiniuConvert: Boolean = false,     // v8.5.9: 迈金七牛云直链通道转换，绝大多数为 WGS-84，默认关
+    val mageneFitContentConvert: Boolean = true, // v8.5.9: 迈金 fit_content 通道转换，绝大多数为 GCJ-02，默认开
     val autoSync: Boolean = false,  // 任务级自动同步
     val autoIntervalSec: Int = 900, // 自动间隔（秒，≥15min）
     val enabled: Boolean = true,    // 启用
     val lastRunTime: Long = 0L,     // 上次运行时间
     val lastRunOk: Int = 0,
     val lastRunSkip: Int = 0,
-    val lastRunFail: Int = 0
+    val lastRunFail: Int = 0,
+    val lastRunDetail: String = "",  // v8.4.4: 本次各平台明细 JSON
+    val recentRuns: List<String> = emptyList()  // v8.4.8: 最近5次运行记录 JSON 数组 [{time,ok,skip,fail,detail}]
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -36,6 +40,8 @@ data class SyncTask(
         put("incremental", incremental)
         put("force", force)
         put("coordinateConvert", coordinateConvert)
+        put("mageneQiniuConvert", mageneQiniuConvert)
+        put("mageneFitContentConvert", mageneFitContentConvert)
         put("autoSync", autoSync)
         put("autoIntervalSec", autoIntervalSec)
         put("enabled", enabled)
@@ -43,12 +49,23 @@ data class SyncTask(
         put("lastRunOk", lastRunOk)
         put("lastRunSkip", lastRunSkip)
         put("lastRunFail", lastRunFail)
+        put("lastRunDetail", lastRunDetail)
+        put("recentRuns", JSONArray(recentRuns))
     }
 
-    fun copyRun(ok: Int, skip: Int, fail: Int): SyncTask = copy(
-        lastRunTime = System.currentTimeMillis(),
-        lastRunOk = ok, lastRunSkip = skip, lastRunFail = fail
-    )
+    fun copyRun(ok: Int, skip: Int, fail: Int, detail: String = ""): SyncTask {
+        val now = System.currentTimeMillis()
+        val entry = JSONObject().apply {
+            put("time", now); put("ok", ok); put("skip", skip); put("fail", fail); put("detail", detail)
+        }.toString()
+        val newHistory = (listOf(entry) + recentRuns).take(5)  // 保留最近5次
+        return copy(
+            lastRunTime = now,
+            lastRunOk = ok, lastRunSkip = skip, lastRunFail = fail,
+            lastRunDetail = detail,
+            recentRuns = newHistory
+        )
+    }
 
     companion object {
         fun fromJson(o: JSONObject): SyncTask {
@@ -66,14 +83,22 @@ data class SyncTask(
                 incremental = o.optBoolean("incremental", true),
                 force = o.optBoolean("force", false),
                 coordinateConvert = o.optBoolean("coordinateConvert", true),
+                mageneQiniuConvert = o.optBoolean("mageneQiniuConvert", false),
+                mageneFitContentConvert = o.optBoolean("mageneFitContentConvert", true),
                 autoSync = o.optBoolean("autoSync", false),
                 autoIntervalSec = o.optInt("autoIntervalSec", 900),
                 enabled = o.optBoolean("enabled", true),
                 lastRunTime = o.optLong("lastRunTime", 0L),
                 lastRunOk = o.optInt("lastRunOk", 0),
                 lastRunSkip = o.optInt("lastRunSkip", 0),
-                lastRunFail = o.optInt("lastRunFail", 0)
+                lastRunFail = o.optInt("lastRunFail", 0),
+                lastRunDetail = o.optString("lastRunDetail", ""),
+                recentRuns = o.optJSONArray("recentRuns")?.let { a ->
+                    (0 until a.length()).mapNotNull { a.optString(it) }
+                } ?: emptyList()
             )
         }
     }
 }
+
+

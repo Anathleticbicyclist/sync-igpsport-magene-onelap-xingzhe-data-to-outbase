@@ -29,6 +29,9 @@ class PrefsManager(context: Context) {
         private const val KEY_LAST_AUTO_SYNC_RESULT = "last_auto_sync_result"
         private const val KEY_LAST_DETECTED_DATE = "last_detected_date"
         private const val KEY_GCJ02_CONVERT = "gcj02_convert"
+        // v8.5.9: 迈金坐标转换开关拆分为两个通道独立控制
+        private const val KEY_MAGENE_QINIU_GCJ02 = "magene_qiniu_gcj02_convert"              // 七牛云直链，绝大多数为 WGS-84，默认关
+        private const val KEY_MAGENE_FITCONTENT_GCJ02 = "magene_fitcontent_gcj02_convert"   // fit_content 接口，绝大多数为 GCJ-02，默认开
         private const val KEY_SAVE_DIR = "save_dir"
         private const val KEY_FORCE_RETRANSMIT = "force_retransmit"
         private const val KEY_CUTOFF_ENABLED = "cutoff_enabled"  // v8.1.0
@@ -443,6 +446,12 @@ class PrefsManager(context: Context) {
     fun setLastDetectedDate(s: String) = prefs.edit().putString(KEY_LAST_DETECTED_DATE, s).apply()
     fun isGcj02Convert(): Boolean = prefs.getBoolean(KEY_GCJ02_CONVERT, false)
     fun setGcj02Convert(b: Boolean) = prefs.edit().putBoolean(KEY_GCJ02_CONVERT, b).apply()
+    // v8.5.9: 迈金七牛云直链通道转换（该通道绝大多数为 WGS-84 坐标，建议关闭，默认关闭）
+    fun isMageneQiniuGcj02Convert(): Boolean = prefs.getBoolean(KEY_MAGENE_QINIU_GCJ02, false)
+    fun setMageneQiniuGcj02Convert(b: Boolean) = prefs.edit().putBoolean(KEY_MAGENE_QINIU_GCJ02, b).apply()
+    // v8.5.9: 迈金 fit_content 通道转换（该通道绝大多数为 GCJ-02 坐标，建议开启，默认开启）
+    fun isMageneFitContentGcj02Convert(): Boolean = prefs.getBoolean(KEY_MAGENE_FITCONTENT_GCJ02, true)
+    fun setMageneFitContentGcj02Convert(b: Boolean) = prefs.edit().putBoolean(KEY_MAGENE_FITCONTENT_GCJ02, b).apply()
     fun getSaveDir(): String = prefs.getString(KEY_SAVE_DIR, "") ?: ""
     fun setSaveDir(d: String) = prefs.edit().putString(KEY_SAVE_DIR, d).apply()
     // v7.6.8: 忽略记忆，强制重传（1对1时用户自选；1对多时强制开启）
