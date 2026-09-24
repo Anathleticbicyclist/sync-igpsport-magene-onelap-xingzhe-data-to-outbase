@@ -7,7 +7,7 @@
 [![Android](https://img.shields.io/badge/Platform-Android-green)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-blue)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v8.6.0-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-v8.6.6-brightgreen)]()
 
 一款 Android 运动数据迁移工具：**一次勾选多个数据源平台，统一批量上传到 Outbase**，解决骑行/跑步数据散落在多个平台、难以集中管理的痛点。
 
@@ -33,6 +33,8 @@
 - 📂 **文件本地存储** — 同步的 FIT/GPX 文件自动保存至手机 `Download/迈向Ob/` 目录，支持一键打开目录查看
 - 🧭 **迈金 GCJ-02 坐标转换** — 迈金两个下载通道独立开关：七牛云直链（绝大多数为 WGS-84，默认关）与 fit_content 接口（绝大多数为 GCJ-02，默认开），可分别控制是否转换
 - ⏰ **开屏动画** — 1 秒清爽开屏，浅蓝渐变
+- 🔁 **6 平台自动重登** — Keep/咕咚/MyWhoosh/Zwift/Zepp/Komoot 登录后记住账号密码，token 过期自动重登，App 重启后同样生效；注销时自动清除保存的密码
+- 📊 **Outbase 登录卡升级** — 固定整行卡片：记录条数徽标 + ↑下载/↓跳过/✗失败统计行，点击查看完整同步详情弹窗
 - 🔍 **检查更新** — 关于页一键检测正式版最新版本
 
 ### 四页布局
@@ -195,6 +197,11 @@ cd sync-igpsport-magene-onelap-xingzhe-data-to-outbase
 ---
 
 ## 📋 更新日志
+
+### v8.6.6（2026-09-24）
+- 6 平台自动重登：Keep / 咕咚 / MyWhoosh / Zwift / Zepp / Komoot 登录后记住账号密码，token 过期自动重登，App 重启后同样生效；注销时自动清除保存的密码
+- Outbase 登录卡升级：固定整行展示，右上角记录条数徽标 + ↑下载/↓跳过/✗失败统计行，点击查看完整同步详情
+- 佳明失效时保留令牌，重登自动复用/刷新（不再新建令牌）
 
 ### v8.6.0（2026-09-21）
 - 登录详情弹窗优化：弹窗内容（状态/统计/最近记录/平台日志）支持滚动查看，操作按钮固定底部，不再被长内容挤出屏幕
