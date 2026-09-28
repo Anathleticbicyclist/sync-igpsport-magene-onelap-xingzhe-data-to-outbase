@@ -7,7 +7,7 @@
 [![Android](https://img.shields.io/badge/Platform-Android-green)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-blue)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v8.6.6-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-v8.7.0-brightgreen)]()
 
 一款 Android 运动数据迁移工具：**一次勾选多个数据源平台，统一批量上传到 Outbase**，解决骑行/跑步数据散落在多个平台、难以集中管理的痛点。
 
@@ -36,6 +36,9 @@
 - 🔁 **6 平台自动重登** — Keep/咕咚/MyWhoosh/Zwift/Zepp/Komoot 登录后记住账号密码，token 过期自动重登，App 重启后同样生效；注销时自动清除保存的密码
 - 📊 **Outbase 登录卡升级** — 固定整行卡片：记录条数徽标 + ↑下载/↓跳过/✗失败统计行，点击查看完整同步详情弹窗
 - 🔍 **检查更新** — 关于页一键检测正式版最新版本
+- 🛡️ **上传结果确认** — Outbase 异步处理「待处理」不算成功，不写同步记忆、下次同步自动重试，杜绝假成功
+- 🕐 **Keep 时间修复** — 修复 Keep 导入时间错乱（epoch 秒误判偏移约 20 天）
+- 🗂️ **合并文件识别增强** — 手动选择 FIT/GPX 合并时按文件内容识别（FIT 头 / GPX XML），部分机型不再提示"未选择"
 
 ### 四页布局
 
@@ -197,6 +200,15 @@ cd sync-igpsport-magene-onelap-xingzhe-data-to-outbase
 ---
 
 ## 📋 更新日志
+
+### v8.7.0（2026-09-28）
+- 修复 Keep 导入时间错乱：epoch 秒误判为相对毫秒导致时间偏移约 20 天（新增 [1e9,1e11) 区间判定）
+- 修复自动同步漏同步：取消「每轮仅最新 5 条」截断，积累多条新记录时更早记录不再被饿死
+- 上传结果「待处理」不再假成功：Outbase 异步解析未确认时不写同步记忆，下次同步自动重试，保证最终一致
+- 修复手动选择 FIT 文件合并选不上：SAF 内容检测（FIT 头 / GPX XML）兜底，不再依赖不可靠的扩展名
+- 修复 Keep 心率/步频曲线越界匹配：轨迹点早于最早采样点时返回 0，不再取未来数据
+- 修复运行任务白屏：同步日志改为主线程批量追加（挂起日志 100 条补显上限 + 200 条防膨胀）
+- 新增 16 个单元测试覆盖以上修复（Keep 时间换算 / 合并文件识别 / 上传结果分类）
 
 ### v8.6.6（2026-09-24）
 - 6 平台自动重登：Keep / 咕咚 / MyWhoosh / Zwift / Zepp / Komoot 登录后记住账号密码，token 过期自动重登，App 重启后同样生效；注销时自动清除保存的密码
