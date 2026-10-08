@@ -7,7 +7,7 @@
 [![Android](https://img.shields.io/badge/Platform-Android-green)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-blue)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v8.7.0-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-v8.8.0-brightgreen)]()
 
 一款 Android 运动数据迁移工具：**一次勾选多个数据源平台，统一批量上传到 Outbase**，解决骑行/跑步数据散落在多个平台、难以集中管理的痛点。
 
@@ -200,6 +200,15 @@ cd sync-igpsport-magene-onelap-xingzhe-data-to-outbase
 ---
 
 ## 📋 更新日志
+
+### v8.8.0（2026-10-08）
+- 高驰同步接口升级：账号查询接口 /account → /account/query（原接口已 404）；STS 凭证改走训练中心 BFF 代理（原端点已下线），并捕获 WebView 登录 userId 直接复用，不再重复请求
+- 高驰空轨迹优化：<20KB 的 0 距离文件提前跳过，不浪费 STS 请求
+- 佳明中国自动重登：token 刷新失败时用保存的账号密码自动重新登录，App 重启后同样生效；注销时一并清除
+- 修复 MyWhoosh 活动拉不全：内部循环翻页累计，不再固定第 1 页最多 200 条
+- 修复黑鸟分页死循环：游标在跳过偏移前推进，offset 较大时不再反复拉第一页
+- 多平台补全运动起始时间（startTimeMs）：高驰/MyWhoosh/黑鸟/百锐腾/迈金/行者，日期检索与排序更准确
+- 修复迈金坐标转换失效：转换结果返回值被丢弃的严重 bug，开关开启后坐标现在真正转为 WGS-84
 
 ### v8.7.0（2026-09-28）
 - 修复 Keep 导入时间错乱：epoch 秒误判为相对毫秒导致时间偏移约 20 天（新增 [1e9,1e11) 区间判定）
