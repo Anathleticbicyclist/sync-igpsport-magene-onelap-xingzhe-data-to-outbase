@@ -7,7 +7,7 @@
 [![Android](https://img.shields.io/badge/Platform-Android-green)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-blue)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v8.8.6-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-v8.8.7-brightgreen)]()
 
 一款 Android 运动数据迁移工具：**一次勾选多个数据源平台，统一批量上传到 Outbase**，解决骑行/跑步数据散落在多个平台、难以集中管理的痛点。
 
@@ -200,6 +200,13 @@ cd sync-igpsport-magene-onelap-xingzhe-data-to-outbase
 ---
 
 ## 📋 更新日志
+
+### v8.8.7（2026-10-10）
+- 修复 **Zwift 拉不到活动**（三个根因）：
+  - 列表分页越界：Zwift API 返回的数组本身已按 `start` 偏移，旧代码再次按 `skip` 偏移导致翻页时全部越界丢弃
+  - 无 S3 字段丢记录：S3 私有化后活动对象不再返回 `fitFileBucket/fitFileKey`，旧代码遇到即跳过整条记录，首屏显示 0 条；现改为保留记录并以活动 ID 走 API 详情下载（`fitnessData.fullDataUrl`）
+  - 下载兜底增强：`downloadFit` 支持从 `|activityId` 提取活动 ID，无需调用方传参即可走鉴权下载链路；`NOT_AVAILABLE`（试用订阅无下载权限）给出中文提示
+- 同步补齐：列表接口 limit 上限 50 截断（超过返回 400），S3 直链 URL 编码修复
 
 ### v8.8.6（2026-10-10）
 - 新增数据源：**iGPSPORT 国际区**——账号密码直接登录（app.igpsport.com 国际账号），作为下载来源，国际账号用户也可把数据集中到 Outbase
