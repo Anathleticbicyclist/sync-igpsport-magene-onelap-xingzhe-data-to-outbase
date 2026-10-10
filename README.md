@@ -7,7 +7,7 @@
 [![Android](https://img.shields.io/badge/Platform-Android-green)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-blue)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v8.8.0-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-v8.8.6-brightgreen)]()
 
 一款 Android 运动数据迁移工具：**一次勾选多个数据源平台，统一批量上传到 Outbase**，解决骑行/跑步数据散落在多个平台、难以集中管理的痛点。
 
@@ -200,6 +200,11 @@ cd sync-igpsport-magene-onelap-xingzhe-data-to-outbase
 ---
 
 ## 📋 更新日志
+
+### v8.8.6（2026-10-10）
+- 新增数据源：**iGPSPORT 国际区**——账号密码直接登录（app.igpsport.com 国际账号），作为下载来源，国际账号用户也可把数据集中到 Outbase
+- 修复百锐腾下载：改用移动端 REST 通道（m3.brytonactive.com + x-api-key）下载原始 FIT，替换失效的网页端 HTML 响应；自动同步同样生效
+- 修复设置页布局：数据来源网格改为按已登录平台动态重建，紧凑排列补齐空缺，不再留下大片空白
 
 ### v8.8.0（2026-10-08）
 - 高驰同步接口升级：账号查询接口 /account → /account/query（原接口已 404）；STS 凭证改走训练中心 BFF 代理（原端点已下线），并捕获 WebView 登录 userId 直接复用，不再重复请求
