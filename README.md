@@ -7,7 +7,7 @@
 [![Android](https://img.shields.io/badge/Platform-Android-green)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-blue)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v8.8.7-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-v9.1.2-brightgreen)]()
 
 一款 Android 运动数据迁移工具：**一次勾选多个数据源平台，统一批量上传到 Outbase**，解决骑行/跑步数据散落在多个平台、难以集中管理的痛点。
 
@@ -200,6 +200,16 @@ cd sync-igpsport-magene-onelap-xingzhe-data-to-outbase
 ---
 
 ## 📋 更新日志
+
+### v9.1.2（2026-10-14）
+- **新增数据源：CyCity**——手机号+密码纯 API 直接登录（对齐开发版 v8.9.1），作为下载来源，把 CyCity 骑行记录同步到 Outbase
+- CyCity 登录/列表/下载为纯 API 链路（无浏览器依赖）；注销时自动清除保存的 token
+
+### v9.1.1（2026-10-14）
+- **运动类型全量修复**：佳明等平台的活动类型不再被统一识别成骑行——拉列表时解析 `activityType.typeKey` 并全量映射（骑行/跑步/徒步/步行/登山/游泳/铁三/滑雪/划船/力量训练），上传转 FIT 时优先按真实运动类型写入（`convertWithSportType`），官方 gpx2fit 失败时自研转换不再默认骑行
+- **迈金时间解析修复**：`start_riding_time` 为北京时间字符串，旧代码 `optLong` 解析为 0 导致日期检索/排序失效；现从字符串解析毫秒时间戳，并统一按北京时间格式化（文件名时间不再差 8 小时）
+- **迈金坐标转换改 Kotlin 原生**：主线程与后台统一走 `FitGcj02Fixer`（替代 WebView JS——magene_fix.js 的 compressed record offset 多偏移 1 字节，会遍历错位破坏 FIT 时间字段）
+- 新增 20 条单元测试覆盖以上修复（sportType 映射 / convertWithSportType / 佳明 typeKey 映射）
 
 ### v8.8.7（2026-10-10）
 - 修复 **Zwift 拉不到活动**（三个根因）：
