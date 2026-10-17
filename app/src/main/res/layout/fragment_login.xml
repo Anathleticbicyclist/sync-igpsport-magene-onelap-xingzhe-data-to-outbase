@@ -48,71 +48,7 @@
                 android:textSize="8sp" />
         </LinearLayout>
 
-        <!-- v8.4.0: Outbase 固定卡（始终显示、不可收起、默认选中） -->
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/cardOutbaseFixed"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="3dp"
-            android:clickable="true"
-            android:focusable="true"
-            app:cardCornerRadius="14dp"
-            app:cardElevation="0dp"
-            app:strokeColor="#BFD9FF"
-            app:strokeWidth="1dp">
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingStart="10dp"
-                android:paddingTop="8dp"
-                android:paddingEnd="10dp"
-                android:paddingBottom="8dp">
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical">
-                    <View
-                        android:layout_width="8dp"
-                        android:layout_height="8dp"
-                        android:background="@drawable/bg_dot_outbase" />
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="6dp"
-                        android:text="Outbase"
-                        android:textSize="12sp"
-                        android:textStyle="bold"
-                        android:textColor="@color/text_primary"
-                        android:maxLines="1" />
-                </LinearLayout>
-                <TextView
-                    android:id="@+id/tvOutbaseStatus"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp"
-                    android:text="未登录"
-                    android:textSize="10sp"
-                    android:textColor="@color/text_secondary"
-                    android:maxLines="1" />
-                <TextView
-                    android:id="@+id/btnOutbaseLogin"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:text="登录Outbase"
-                    android:textSize="11sp"
-                    android:gravity="center"
-                    android:textColor="@color/white"
-                    android:background="@drawable/primary_btn_bg"
-                    android:paddingTop="6dp"
-                    android:paddingBottom="6dp" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <!-- v8.4.0: 一键检测卡（对齐开发版 8.3.3） -->
+        <!-- v8.6.6: 一键检测卡（对齐开发版 8.3.3） -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -142,6 +78,14 @@
                 </LinearLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
+
+        <!-- v8.6.6: Outbase 固定卡容器（独占整行，始终显示、不可收起；程序化 makeCard 构建：徽标+统计行+点击详情） -->
+        <LinearLayout
+            android:id="@+id/containerOutbase"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="2dp" />
 
         <!-- v8.4.0: 已登录平台分组标题 -->
         <TextView

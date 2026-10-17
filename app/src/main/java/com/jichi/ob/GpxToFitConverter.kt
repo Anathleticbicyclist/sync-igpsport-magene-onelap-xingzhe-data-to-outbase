@@ -207,6 +207,37 @@ object GpxToFitConverter {
         return convertPoints(pts, resolvedSport, meta.dist, meta.dur, detSub, meta.avgCadence)
     }
 
+    /** v9.1.1: 从通用sportType字符串映射到FIT (sport, sub_sport)（全量覆盖，对齐开发版v9.1.0） */
+    fun sportTypeToFitPair(sportType: String?): Pair<Int, Int>? {
+        if (sportType.isNullOrBlank()) return null
+        return when (sportType.lowercase()) {
+            "cycling" -> Pair(2, 7)  // road cycling
+            "running" -> Pair(1, 2)  // street running
+            "hiking" -> Pair(17, 3)  // trail hiking
+            "walking" -> Pair(1, 2)  // iGP对walking支持差，映射到running
+            "mountaineering" -> Pair(16, 0)
+            "swimming" -> Pair(5, 30)  // open_water swimming
+            "triathlon" -> Pair(18, 0)
+            "skiing" -> Pair(10, 0)  // training（FIT无专门滑雪枚举）
+            "rowing" -> Pair(10, 0)  // training（FIT无专门划船枚举）
+            "training" -> Pair(10, 0)  // strength/yoga/elliptical等
+            else -> null
+        }
+    }
+
+    /** v9.1.1: 优先用record.sportType转换，兜底走GPX <name>检测（对齐开发版v9.1.0） */
+    fun convertWithSportType(gpx: ByteArray, sportType: String?): ByteArray {
+        val gpxStr = String(gpx, Charsets.UTF_8)
+        val pts = parseGpx(gpxStr)
+        require(pts.isNotEmpty()) { "GPX无有效轨迹点" }
+        val startUnix = pts.firstOrNull { it.ts > 0L }?.ts ?: (System.currentTimeMillis() / 1000)
+        // 优先用record.sportType，检测不到再走GPX <name>
+        val (detSport, detSub) = sportTypeToFitPair(sportType) ?: detectSportFromGpx(gpxStr)
+        val resolvedSport = if (detSport > 0) detSport else 2
+        val meta = parseMeta(gpxStr)
+        return convertPoints(pts, resolvedSport, meta.dist, meta.dur, detSub, meta.avgCadence)
+    }
+
     /**
      * v7.9.7: 轨迹合并入口——从已解析的 TrackPoint 列表直接生成标准合法 FIT。
      * 与 [convert] 共用 buildFitBody + header 组装，保证合并产物与单条转换同样合法（含 header/CRC）。

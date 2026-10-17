@@ -45,6 +45,16 @@ class KeepApi {
         // base64("NTZmZTU5OzgyZzpkODczYw==")="56fe59;82g:d873c"，base64("MjM0Njg5MjQzMjkyMDMwMA==")="2346892432920300"）
         private val KEEP_GEO_KEY = "56fe59;82g:d873c".toByteArray(Charsets.UTF_8)
         private val KEEP_GEO_IV = "2346892432920300".toByteArray(Charsets.UTF_8)
+
+        /** v8.7.0: Keep 轨迹点时间戳换算（抽成纯函数便于单测）。
+         *  返回值=绝对毫秒；0 表示无有效时间。 */
+        internal fun convertKeepTs(ts: Long, startTimeMs: Long): Long = when {
+            ts <= 0 -> 0L
+            ts >= 100_000_000_000L -> ts
+            ts >= 1_000_000_000L -> ts * 1000
+            ts >= 100_000_000L -> startTimeMs + ts
+            else -> startTimeMs + ts * 1000
+        }
     }
 
     private val client = OkHttpClient.Builder()
@@ -114,6 +124,12 @@ class KeepApi {
     /** 启动登录检测：token 有效返回 "Keep用户"，无效返回 null */
     suspend fun getUsername(token: String): String? = withContext(Dispatchers.IO) {
         if (validateToken(token)) "Keep用户" else null
+    }
+
+    /** v8.6.6: 从 prefs 恢复已保存的账号密码（App 重启后支持自动重登） */
+    fun restoreCredentials(mobile: String?, password: String?) {
+        if (!mobile.isNullOrEmpty()) lastMobile = mobile
+        if (!password.isNullOrEmpty()) lastPassword = password
     }
 
     /** 401 时用最近一次登录的账号密码重新登录（内存兜底） */
@@ -549,6 +565,8 @@ class KeepApi {
      *  hrCurve 的 timestamp 是相对秒（从 startTime 开始），轨迹点时间也是相对 startTime。 */
     private fun findHrAt(hrCurve: List<Pair<Long, Int>>, relSeconds: Long): Int {
         if (hrCurve.isEmpty() || relSeconds < 0) return 0
+        // v8.6.7: 轨迹点早于最早采样点时，不可向前匹配未来心率，返回 0（无数据）
+        if (relSeconds < hrCurve[0].first) return 0
         // 二分查找最近的采样点
         var lo = 0; var hi = hrCurve.size - 1
         while (lo < hi) {
@@ -610,6 +628,8 @@ class KeepApi {
     /** 按轨迹点相对秒时间，从步频曲线中找最近邻步频值。 */
     private fun findCadAt(cadCurve: List<Pair<Long, Int>>, relSeconds: Long): Int {
         if (cadCurve.isEmpty() || relSeconds < 0) return 0
+        // v8.6.7: 轨迹点早于最早采样点时，不可向前匹配未来步频，返回 0（无数据）
+        if (relSeconds < cadCurve[0].first) return 0
         var lo = 0; var hi = cadCurve.size - 1
         while (lo < hi) {
             val mid = (lo + hi) / 2
@@ -654,17 +674,7 @@ class KeepApi {
         sb.append("  <trk><name>from keep - ").append(precise).append("</name><type>").append(sportType).append("</type><trkseg>\n")
         for (p in points) {
             val lat = p[0]; val lon = p[1]; val ts = p[2].toLong(); val alt = p[3]
-            // v8.1.3: 时间换算修正——此前相对值一律 ×100 会把轨迹时长压缩 10 倍（秒→毫秒应为 ×1000）。
-            //   <100000000000 = 相对值（非绝对毫秒）：
-            //     ≥100000000（相对毫秒，如 2.7 小时≈10^8ms）→ 直接用 startTime 推算；
-            //     <100000000（相对秒，如 5400s）→ ×1000 转毫秒；
-            //   绝对毫秒（>=100000000000，如 unixTimestamp）直接用。
-            val absMs = when {
-                ts <= 0 -> 0L
-                ts >= 100_000_000_000L -> ts
-                ts >= 100_000_000L -> startTimeMs + ts
-                else -> startTimeMs + ts * 1000
-            }
+            val absMs = convertKeepTs(ts, startTimeMs)
             val time = if (absMs > 0) formatGpxTime(absMs) else ""
             // v8.5.3: 计算该点相对秒，从心率曲线找最近邻心率
             val relSec = if (absMs > 0) (absMs - startTimeMs) / 1000 else 0L

@@ -80,6 +80,11 @@ class SyncSettingsFragment : Fragment() {
 
         // v8.1.2: 点击"打开目录"跳转到存储目录，查看已保存的FIT/GPX文件
         view.findViewById<TextView>(R.id.btnOpenSaveDir)?.setOnClickListener { openSaveDir() }
+
+        // v9.2.0: 时区修正设置入口（按平台设置当天/历史时区调整，移植开发版v9.2.2）
+        view.findViewById<TextView>(R.id.btnTimeZoneEntry)?.setOnClickListener {
+            startActivity(Intent(requireContext(), TimeZoneSettingsActivity::class.java))
+        }
     }
 
     /**
@@ -129,7 +134,7 @@ class SyncSettingsFragment : Fragment() {
 
     // ===== 源/目标选择 =====
     private fun platformColor(tag: String): Int = when (tag) {
-        "igp" -> requireContext().getColor(R.color.igp_green)
+        "igp", "igpi" -> requireContext().getColor(R.color.igp_green)
         "xz" -> requireContext().getColor(R.color.xingzhe_blue)
         "mg" -> requireContext().getColor(R.color.magene_blue)
         "bb" -> requireContext().getColor(R.color.blackbird_dark)
@@ -307,22 +312,63 @@ class SyncSettingsFragment : Fragment() {
         }
     }
 
-    /** v8.4.3: 来源网格未登录平台直接隐藏不显示（已登录才展示） */
+    /**
+     * v8.4.3: 来源网格未登录平台直接隐藏不显示（已登录才展示）
+     * v8.8.6: 改为重建式——GridLayout 中 GONE 不释放网格单元会留下空洞，
+     * 改为按已登录平台列表动态重建按钮，从左到右紧凑填充补齐空缺。
+     */
     private fun updateSourceChips() {
-        for (i in 0 until gridSource.childCount) {
-            val btn = gridSource.getChildAt(i) as? MaterialButton ?: continue
-            val ds = DataSource.fromShortName(btn.tag as? String ?: "") ?: continue
-            if (!prefs.isLoggedIn(ds)) {
-                btn.visibility = View.GONE
-                btn.isEnabled = false
-            } else {
-                btn.visibility = View.VISIBLE
-                btn.isEnabled = true
-                btn.alpha = 1.0f
-                setButtonSelected(btn, selectedSourceTags.contains(btn.tag as? String ?: ""), btn.tag as? String ?: "")
+        val saved = selectedSourceTags.toSet()
+        gridSource.removeAllViews()
+        val loggedIn = DataSource.sourcePlatforms().filter { prefs.isLoggedIn(it) }
+        for (ds in loggedIn) {
+            val btn = createSourceChip(ds)
+            btn.setOnClickListener {
+                if (!btn.isEnabled) return@setOnClickListener
+                val tag = btn.tag as? String ?: return@setOnClickListener
+                val d = DataSource.fromShortName(tag)
+                if (d == null || !prefs.isLoggedIn(d)) {
+                    Toast.makeText(requireContext(), "请先登录${d?.displayName ?: "该平台"}", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                if (selectedSourceTags.contains(tag)) selectedSourceTags.remove(tag)
+                else selectedSourceTags.add(tag)
+                refreshSourceButtons()
             }
+            gridSource.addView(btn, sourceChipLayoutParams())
+            setButtonSelected(btn, saved.contains(ds.shortName), ds.shortName)
         }
     }
+
+    private fun sourceChipLayoutParams(): GridLayout.LayoutParams {
+        val d = resources.displayMetrics.density
+        return GridLayout.LayoutParams().apply {
+            width = 0
+            height = (44 * d).toInt()
+            columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+            setMargins((3 * d).toInt(), (3 * d).toInt(), (3 * d).toInt(), (3 * d).toInt())
+        }
+    }
+
+    private fun createSourceChip(ds: DataSource): MaterialButton =
+        MaterialButton(requireContext()).apply {
+            insetTop = 0
+            insetBottom = 0
+            minHeight = 0
+            minWidth = 0
+            text = ds.displayName
+            textSize = 12f
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            gravity = android.view.Gravity.CENTER
+            tag = ds.shortName
+            cornerRadius = 14
+            backgroundTintList = android.content.res.ColorStateList.valueOf(
+                if (ds == DataSource.IGPSPORT_INT) requireContext().getColor(R.color.igp_green)
+                else platformColor(ds.shortName)
+            )
+            setTextColor(requireContext().getColor(R.color.white))
+        }
 
     /** v8.0.0: 登录状态变化后刷新设置页 */
     fun refreshLoginState() {

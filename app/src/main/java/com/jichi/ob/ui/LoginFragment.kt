@@ -27,11 +27,13 @@ class LoginFragment : Fragment() {
 
     /** 登录页展示平台（Outbase 单独固定卡，不进容器） */
     private val LOGIN_PLATFORMS = listOf(
-        DataSource.IGPSPORT, DataSource.XINGZHE, DataSource.MAGENE, DataSource.BLACKBIRD,
+        DataSource.IGPSPORT, DataSource.IGPSPORT_INT, DataSource.XINGZHE, DataSource.MAGENE, DataSource.BLACKBIRD,
         DataSource.GIANT, DataSource.BRYTON, DataSource.GARMIN_COM, DataSource.GARMIN_CN,
         DataSource.COROS_CN, DataSource.COROS_INT, DataSource.WAHOO, DataSource.MYWHOOSH,
         DataSource.ZWIFT, DataSource.KEEP, DataSource.CODOON, DataSource.ZEPP,
-        DataSource.KOMOT, DataSource.SUUNTO, DataSource.TWO_BULU, DataSource.JOYRUN
+        DataSource.KOMOT, DataSource.SUUNTO, DataSource.TWO_BULU, DataSource.JOYRUN,
+        // v9.1.2: CyCity（手机号密码纯API登录，仅下载数据源）
+        DataSource.CYCITY
     )
 
     private lateinit var prefs: PrefsManager
@@ -67,24 +69,8 @@ class LoginFragment : Fragment() {
             tvFoldArrow.text = if (show) "▴ 点击收起" else "▾ 点击展开"
         }
 
-        // Outbase 固定卡（始终显示，不收起）
-        val cardOutbase = view.findViewById<MaterialCardView>(R.id.cardOutbaseFixed)
-        val tvOutbaseStatus = view.findViewById<TextView>(R.id.tvOutbaseStatus)
-        val btnOutbaseLogin = view.findViewById<TextView>(R.id.btnOutbaseLogin)
-        cardOutbase.setOnClickListener { openPlatformLogin(DataSource.OUTBASE) }
-        btnOutbaseLogin.setOnClickListener { openPlatformLogin(DataSource.OUTBASE) }
-        fun refreshOutbase() {
-            val logged = prefs.isLoggedIn(DataSource.OUTBASE)
-            val username = prefs.getUsername(DataSource.OUTBASE)
-            tvOutbaseStatus.text = when {
-                logged && !username.isNullOrBlank() -> "✅ 已登录 · $username"
-                logged -> "✅ 已登录"
-                else -> "未登录"
-            }
-            tvOutbaseStatus.setTextColor(requireContext().getColor(if (logged) R.color.green else R.color.text_secondary))
-            btnOutbaseLogin.text = if (logged) "重新登录" else "登录Outbase"
-        }
-        refreshOutbase()
+        // v8.6.6: Outbase 固定卡（独占整行、始终显示；程序化 makeCard：状态点+条数徽标+统计行+点击详情弹窗）
+        buildOutbase()
 
         // 一键检测
         val btnCheckAll = view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCheckAll)
@@ -107,7 +93,7 @@ class LoginFragment : Fragment() {
                 ))
                 tvCheckSummary.visibility = View.VISIBLE
                 updateStatus()
-                refreshOutbase()
+                buildOutbase()
             }
         }
         val switchAutoCheck = view.findViewById<com.google.android.material.switchmaterial.SwitchMaterial>(R.id.switchAutoCheck)
@@ -118,7 +104,7 @@ class LoginFragment : Fragment() {
             override fun onStateChanged(source: androidx.lifecycle.LifecycleOwner, event: androidx.lifecycle.Lifecycle.Event) {
                 if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                     updateStatus()
-                    refreshOutbase()
+                    buildOutbase()
                 }
             }
         })
@@ -131,11 +117,23 @@ class LoginFragment : Fragment() {
         try {
             statViews.clear()
             countViews.clear()
+            buildOutbase()
             buildLogged()
             buildLoggedOut()
             updateFoldToggle()
             refreshStats()
         } catch (_: Exception) {}
+    }
+
+    /** v8.6.6: Outbase 固定卡（独占整行、始终显示；makeCard 完整卡：状态点+条数徽标+统计行+点击详情弹窗） */
+    private fun buildOutbase() {
+        val container = view?.findViewById<LinearLayout>(R.id.containerOutbase) ?: return
+        container.removeAllViews()
+        val logged = prefs.isLoggedIn(DataSource.OUTBASE)
+        container.addView(makeCard(DataSource.OUTBASE, logged),
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(2f).toInt(); bottomMargin = dp(2f).toInt()
+            })
     }
 
     private fun updateFoldToggle() {
@@ -188,7 +186,9 @@ class LoginFragment : Fragment() {
     /** v8.4.2: 异步刷新已登录平台的累计统计 + 缓存条数（IO 查询，主线程更新） */
     fun refreshStats() {
         val act = activity as? MainActivity ?: return
+        // v8.6.6: OUTBASE 固定卡不在 LOGIN_PLATFORMS 中，需手动加入统计
         val logged = LOGIN_PLATFORMS.filter { prefs.isLoggedIn(it) }
+            .let { if (prefs.isLoggedIn(DataSource.OUTBASE)) it + DataSource.OUTBASE else it }
         if (logged.isEmpty()) return
         lifecycleScope.launch(Dispatchers.IO) {
             val cache = try { com.jichi.ob.util.ActivityCache.get(requireContext()) } catch (_: Exception) { null }
@@ -609,15 +609,23 @@ class LoginFragment : Fragment() {
             .setMessage("确认注销该平台登录？")
             .setPositiveButton("注销") { _, _ ->
                 prefs.clearCredential(ds)
+                // v8.6.6: 注销时自动清除保存的账号密码（6平台自动重登凭据，防止残留后误自动重登）
+                when (ds) {
+                    DataSource.KEEP -> { prefs.saveKeepAccount(""); prefs.saveKeepPassword("") }
+                    DataSource.CODOON -> { prefs.saveCodoonAccount(""); prefs.saveCodoonPassword("") }
+                    DataSource.MYWHOOSH -> { prefs.saveMywhooshAccount(""); prefs.saveMywhooshPassword("") }
+                    DataSource.ZWIFT -> { prefs.saveZwiftAccount(""); prefs.saveZwiftPassword("") }
+                    DataSource.ZEPP -> { prefs.saveZeppAccount(""); prefs.saveZeppPassword("") }
+                    DataSource.KOMOT -> { prefs.saveKomootAccount(""); prefs.saveKomootPassword("") }
+                    // v8.6.2: 佳明中国自动重登凭据，注销一并清除
+                    DataSource.GARMIN_CN -> prefs.clearGarminCnCredentials()
+                    else -> {}
+                }
                 act.appendLog("👋 ${ds.displayName} 已注销")
                 updateStatus()
                 if (ds == DataSource.OUTBASE) {
-                    try {
-                        val tv = view?.findViewById<TextView>(R.id.tvOutbaseStatus)
-                        tv?.text = "未登录"
-                        tv?.setTextColor(requireContext().getColor(R.color.text_secondary))
-                        view?.findViewById<TextView>(R.id.btnOutbaseLogin)?.text = "登录Outbase"
-                    } catch (_: Exception) {}
+                    // v8.6.6: Outbase 卡程序化构建，注销后整体重建即可
+                    buildOutbase()
                 }
             }
             .setNegativeButton("取消", null)
@@ -648,6 +656,7 @@ class LoginFragment : Fragment() {
         DataSource.SUUNTO -> R.drawable.bg_dot_suunto
         DataSource.TWO_BULU -> R.drawable.bg_dot_keep
         DataSource.JOYRUN -> R.drawable.bg_dot_keep
+        DataSource.CYCITY -> R.drawable.bg_dot_giant
         DataSource.OUTBASE -> R.drawable.bg_dot_outbase
         else -> R.drawable.bg_dot_keep
     }

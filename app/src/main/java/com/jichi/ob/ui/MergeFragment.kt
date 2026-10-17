@@ -42,6 +42,16 @@ import java.util.Locale
  */
 class MergeFragment : Fragment() {
 
+    companion object {
+        /** v8.7.1: FIT 内容识别（文件头第 8-11 字节 = ".FIT"）——抽成纯函数便于单测 */
+        internal fun isFitContent(b: ByteArray): Boolean =
+            b.size >= 12 && b[8] == '.'.code.toByte() && b[9] == 'F'.code.toByte() &&
+                b[10] == 'I'.code.toByte() && b[11] == 'T'.code.toByte()
+
+        /** v8.7.1: GPX 内容识别（头部含 <gpx）——抽成纯函数便于单测 */
+        internal fun isGpxContent(head: String): Boolean = head.contains("<gpx", ignoreCase = true)
+    }
+
     private lateinit var prefs: PrefsManager
     private var source: DataSource? = null
     private var localMode = false
@@ -318,6 +328,13 @@ class MergeFragment : Fragment() {
                 val b = withContext(Dispatchers.IO) {
                     try { requireContext().contentResolver.openInputStream(uri)?.use { it.readBytes() } } catch (_: Exception) { null }
                 }
+                // v8.7.1: 内容检测兜底过滤非运动文件（FIT 头 ".FIT" / GPX XML 结构）——
+                // SAF 在部分 ROM 返回 provider 内部 id（无扩展名），扩展名过滤会误杀 FIT；读不出内容也跳过
+                if (b == null) { names.add(name); bytes.add(null); continue }
+                val isFitContent = isFitContent(b)
+                val head = String(b, 0, minOf(b.size, 512), Charsets.UTF_8)
+                val isGpxContent = isGpxContent(head)
+                if (!isFitContent && !isGpxContent) continue   // 非运动文件跳过
                 names.add(name); bytes.add(b)
             }
             // v8.4.1: 不再按扩展名过滤——交由 parseBytes 按内容识别（FIT 魔数/GPX 内容），避免误报“未选择”

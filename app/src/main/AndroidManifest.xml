@@ -45,6 +45,12 @@
             android:label="登录"
             android:theme="@style/Theme.JichiOB" />
 
+        <!-- v9.2.0: 时区修正设置页（按平台设置当天/历史时区调整） -->
+        <activity
+            android:name=".ui.TimeZoneSettingsActivity"
+            android:label="时区修正设置"
+            android:theme="@style/Theme.JichiOB" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

@@ -5,6 +5,7 @@ import com.jichi.ob.model.ActivityRecord
 import com.jichi.ob.model.DataSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -37,6 +38,25 @@ class IgpsportApi {
         private const val ACTIVITY_URL = "$BASE/web-gateway/web-analyze/activity/queryMyActivity"
         private const val DOWNLOAD_URL = "$BASE/web-gateway/web-analyze/activity/getDownloadUrl"
         private const val PER_PAGE = 20  // iGPSPORT每页最多20
+        // v8.8.6: iGPSPORT 国际区（prod.en.igpsport.com，参考开源项目 intervalssync 的 region 配置）
+        const val LOGIN_URL_INT = "https://prod.en.igpsport.com/service/auth/account/login"
+        private const val BASE_EN = "https://prod.en.igpsport.com/service"
+        private const val ACTIVITY_URL_EN = "$BASE_EN/web-gateway/web-analyze/activity/queryMyActivity"
+        private const val DOWNLOAD_URL_EN = "$BASE_EN/web-gateway/web-analyze/activity/getDownloadUrl"
+        private const val GATEWAY_EN = "$BASE_EN/web-gateway/web-analyze/activity"
+        private const val USER_INFO_URL_EN = "$BASE_EN/mobile/api/User/UserInfo"
+
+        /**
+         * v8.8.6: 国际区登录响应 token 提取（可单测）。
+         * 兼容 data.access_token / data.accessToken / 顶层 access_token / accessToken 四种结构。
+         */
+        fun parseAccessToken(json: org.json.JSONObject): String {
+            val data = json.optJSONObject("data")
+            val fromData = data?.optString("access_token", data.optString("accessToken", "")) ?: ""
+            return fromData.ifEmpty {
+                json.optString("access_token", json.optString("accessToken", ""))
+            }
+        }
     }
  
     private val client = OkHttpClient.Builder()
@@ -272,6 +292,172 @@ class IgpsportApi {
                 Log.w(TAG, "FIT文件头可能无效 (size=${bytes.size})")
             }
             Log.d(TAG, "FIT downloaded: ${bytes.size} bytes (rideId=$rideId)")
+            bytes
+        }
+
+    // ================= v8.8.6: iGPSPORT 国际区 =================
+    // 参考开源项目 intervalssync（github.com/jorge-huxley/intervalssync，MIT）：
+    // 国际区（prod.en.igpsport.com）走移动 API 登录（appId=igpsport-web 账号密码），
+    // access_token 作 Bearer；列表 queryMyActivity（rows[].RideId）；下载先 queryActivityDetail 取 fitUrl，
+    // 失败回退 getDownloadUrl。
+    private fun authHeadersInt(token: String) = mapOf(
+        "Authorization" to "Bearer $token",
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0",
+        "Accept" to "application/json, text/plain, */*",
+        "Accept-Language" to "en,en-US;q=0.9"
+    )
+
+    /** 国际区账号密码登录（移动 API），返回 access_token；失败返回 null */
+    suspend fun loginInternational(email: String, password: String): String? =
+        withContext(Dispatchers.IO) {
+            try {
+                val body = JSONObject().apply {
+                    put("appId", "igpsport-web")
+                    put("username", email)
+                    put("password", password)
+                }
+                val req = Request.Builder()
+                    .url(LOGIN_URL_INT)
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("User-Agent", "okhttp/4.12.0")
+                    .post(okhttp3.RequestBody.create("application/json; charset=utf-8".toMediaType(), body.toString()))
+                    .build()
+                val resp = client.newCall(req).execute()
+                val text = resp.body?.string() ?: return@withContext null
+                if (resp.code != 200) {
+                    Log.w(TAG, "iGPSPORT国际登录 HTTP ${resp.code}: ${text.take(200)}")
+                    return@withContext null
+                }
+                val json = JSONObject(text)
+                val token = parseAccessToken(json)
+                if (token.isEmpty()) {
+                    Log.w(TAG, "iGPSPORT国际登录无access_token: ${json.optString("message", text.take(100))}")
+                    return@withContext null
+                }
+                token
+            } catch (e: Exception) {
+                Log.w(TAG, "iGPSPORT国际登录异常: ${e.message}")
+                null
+            }
+        }
+
+    /** 国际区用户名（UserInfo 尽力而为，失败返回 null） */
+    suspend fun getUsernameInternational(token: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder().url(USER_INFO_URL_EN)
+                .apply { authHeadersInt(token).forEach { (k, v) -> addHeader(k, v) } }
+                .get().build()
+            val resp = client.newCall(req).execute()
+            if (resp.code != 200) return@withContext null
+            val json = JSONObject(resp.body?.string() ?: return@withContext null)
+            val data = json.optJSONObject("data") ?: json
+            data.optString("nickName", data.optString("name", data.optString("userName", "")))
+                .ifEmpty { null }
+        } catch (e: Exception) {
+            Log.w(TAG, "iGPSPORT国际用户名获取失败: ${e.message}")
+            null
+        }
+    }
+
+    /** 国际区活动列表（queryMyActivity，rows[].RideId，时间用 rideDate/startTime） */
+    suspend fun getActivitiesInternational(token: String, offset: Int, limit: Int): List<ActivityRecord> =
+        withContext(Dispatchers.IO) {
+            val result = mutableListOf<ActivityRecord>()
+            val need = offset + limit
+            var currentPage = 1
+            var fetched = 0
+            while (fetched < need) {
+                val url = "$ACTIVITY_URL_EN?pageNo=$currentPage&pageSize=$PER_PAGE&reqType=0&sort=1"
+                val req = Request.Builder().url(url)
+                    .apply { authHeadersInt(token).forEach { (k, v) -> addHeader(k, v) } }
+                    .get().build()
+                val resp = client.newCall(req).execute()
+                val code = resp.code
+                val body = resp.body?.string() ?: throw Exception("空响应 (HTTP $code)")
+                if (code == 401) throw Exception("iGPSPORT国际登录已过期，请重新登录")
+                if (code != 200) throw Exception("iGPSPORT国际 HTTP $code: ${body.take(200)}")
+                val json = JSONObject(body)
+                val apiCode = json.optInt("code", -1)
+                if (apiCode != 0) {
+                    val msg = json.optString("message", json.optString("data", "Unknown"))
+                    if (msg.contains("token", true) || msg.contains("login", true) || msg.contains("Login", true))
+                        throw Exception("iGPSPORT国际登录已过期，请重新登录")
+                    throw Exception("iGPSPORT国际 API error: $msg (code=$apiCode)")
+                }
+                val data = json.optJSONObject("data") ?: json
+                val rows = data.optJSONArray("rows") ?: data.optJSONArray("list") ?: break
+                if (rows.length() == 0) break
+                for (i in 0 until rows.length()) {
+                    fetched++
+                    if (fetched <= offset) continue
+                    val item = rows.getJSONObject(i)
+                    val rideId = item.optString("RideId", item.optString("rideId", item.optString("id", "")))
+                    if (rideId.isEmpty()) continue
+                    val downloadUrl = item.optString("DownloadUrl",
+                        item.optString("downloadUrl", item.optString("FileUrl", item.optString("fileUrl", ""))))
+                    var dist = item.optDouble("Distance", -1.0)
+                    if (dist < 0) dist = item.optDouble("distance", -1.0)
+                    val distKm = if (dist >= 1000) dist / 1000.0 else dist
+                    val startTime = probeTimeField(item)
+                    result.add(
+                        ActivityRecord(
+                            id = rideId,
+                            title = item.optString("Title", item.optString("title", item.optString("name", "骑行"))),
+                            startTime = startTime,
+                            distance = distKm,
+                            duration = item.optInt("Duration", item.optInt("duration", item.optInt("movingTime", 0))),
+                            source = DataSource.IGPSPORT_INT,
+                            extra = downloadUrl.ifEmpty { null }
+                        )
+                    )
+                    if (result.size >= limit) break
+                }
+                if (result.size >= limit || rows.length() < PER_PAGE) break
+                currentPage++
+                kotlinx.coroutines.delay(200)
+            }
+            Log.d(TAG, "getActivitiesInternational total: ${result.size}")
+            result
+        }
+
+    /** 国际区 FIT 下载：先 queryActivityDetail 取 fitUrl，回退 getDownloadUrl，再下载字节 */
+    suspend fun downloadFitInternational(token: String, rideId: String): ByteArray =
+        withContext(Dispatchers.IO) {
+            var downloadUrl = ""
+            val detailReq = Request.Builder().url("$GATEWAY_EN/queryActivityDetail/$rideId")
+                .apply { authHeadersInt(token).forEach { (k, v) -> addHeader(k, v) } }
+                .get().build()
+            runCatching {
+                val resp = client.newCall(detailReq).execute()
+                val json = JSONObject(resp.body?.string() ?: "{}")
+                val data = json.optJSONObject("data")
+                when (val f = data?.opt("fitUrl")) {
+                    is String -> f
+                    is JSONObject -> f.optString("url", "")
+                    else -> ""
+                }
+            }.onSuccess { if (it.isNotEmpty()) downloadUrl = it }
+            if (downloadUrl.isEmpty()) {
+                val fbReq = Request.Builder().url("$DOWNLOAD_URL_EN/$rideId")
+                    .apply { authHeadersInt(token).forEach { (k, v) -> addHeader(k, v) } }
+                    .get().build()
+                val resp = client.newCall(fbReq).execute()
+                val json = JSONObject(resp.body?.string() ?: throw Exception("下载URL空响应"))
+                downloadUrl = when (val data = json.opt("data")) {
+                    is String -> data
+                    is JSONObject -> data.optString("url", data.optString("downloadUrl", ""))
+                    else -> json.optString("url", json.optString("downloadUrl", ""))
+                }
+            }
+            if (downloadUrl.isEmpty()) throw Exception("iGPSPORT国际无下载URL (rideId=$rideId)")
+            val dlReq = Request.Builder().url(downloadUrl)
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0")
+                .addHeader("Accept", "*/*")
+                .get().build()
+            val dlResp = client.newCall(dlReq).execute()
+            val bytes = dlResp.body?.bytes() ?: throw Exception("FIT下载空响应")
+            if (dlResp.code != 200) throw Exception("iGPSPORT国际 FIT下载失败 HTTP ${dlResp.code}")
+            Log.d(TAG, "iGPSPORT国际 FIT downloaded: ${bytes.size} bytes (rideId=$rideId)")
             bytes
         }
 }

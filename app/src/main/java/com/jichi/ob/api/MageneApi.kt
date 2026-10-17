@@ -12,6 +12,10 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import android.util.Base64
 import org.json.JSONObject
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.TimeUnit
  
 /**
@@ -224,7 +228,21 @@ class MageneApi {
                     val item = rows.getJSONObject(i)
                     val id = item.optString("id", "")
                     if (id.isEmpty()) continue
-                    val startTime = item.optString("start_riding_time", "")
+                    // v9.1.1: 迈金 start_riding_time 为北京时间字符串，optLong 解析返回 0 →
+                    // 从字符串解析 startMs（对齐开发版 v8.9.10），否则时间排序/日期检索失效
+                    val startTimeRaw = item.optString("start_riding_time", "")
+                    val startRaw = item.optLong("start_riding_time", 0L)
+                    var startMs = if (startRaw > 1_000_000_000L) (if (startRaw > 1_000_000_000_000L) startRaw else startRaw * 1000L) else 0L
+                    if (startMs == 0L && startTimeRaw.isNotBlank()) {
+                        try {
+                            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+                            sdf.timeZone = TimeZone.getTimeZone("Asia/Shanghai")
+                            startMs = sdf.parse(startTimeRaw)?.time ?: 0L
+                        } catch (_: Exception) {}
+                    }
+                    // v9.1.1: 迈金API返回UTC时间字符串"2026-09-23 09:49:33"，FileNameGenerator按本地时区解析会差8小时，
+                    // 统一转成北京时间字符串（对齐开发版 v8.9.5）
+                    val startTime = normalizeToBeijing(startMs, startTimeRaw)
                     var name = item.optString("name", "")
                     if (name == "null") name = ""
                     val title = name.ifEmpty {
@@ -238,7 +256,8 @@ class MageneApi {
                             startTime = startTime,
                             distance = item.optDouble("distance_km", 0.0),
                             duration = item.optInt("time_seconds", 0),
-                            source = DataSource.MAGENE
+                            source = DataSource.MAGENE,
+                            startTimeMs = startMs
                         )
                     )
                     if (result.size >= limit) break
@@ -253,6 +272,19 @@ class MageneApi {
             Log.d(TAG, "getActivities: ${result.size} records")
             result
         }
+
+    /** v9.1.1: 把迈金API返回的时间统一转成北京时间字符串"yyyy-MM-dd HH:mm:ss"（对齐开发版 v8.9.5）。
+     *  迈金API start_riding_time 返回北京时间字符串，直接格式化，不要再 +8h。 */
+    private fun normalizeToBeijing(utcMs: Long, rawStr: String): String {
+        if (utcMs > 0) {
+            return try {
+                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+                sdf.timeZone = TimeZone.getTimeZone("Asia/Shanghai")
+                sdf.format(Date(utcMs))
+            } catch (_: Exception) { rawStr }
+        }
+        return rawStr
+    }
  
     /**
      * 下载FIT（2026-08-12 修复版）

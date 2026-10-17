@@ -7,7 +7,7 @@
 [![Android](https://img.shields.io/badge/Platform-Android-green)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-blue)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v9.1.2-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-v9.2.0-brightgreen)]()
 
 一款 Android 运动数据迁移工具：**一次勾选多个数据源平台，统一批量上传到 Outbase**，解决骑行/跑步数据散落在多个平台、难以集中管理的痛点。
 
@@ -200,6 +200,11 @@ cd sync-igpsport-magene-onelap-xingzhe-data-to-outbase
 ---
 
 ## 📋 更新日志
+
+### v9.2.0（2026-10-17）
+- **新增时区修正设置**（对齐开发版 v9.2.2）：设置页新增「时区修正设置」入口，可对 迈金/佳明国际/佳明中国/Keep/行者/黑鸟/高驰中国/高驰国际/Wahoo 9 个来源平台**单独设置当天/历史**的时区调整（+8 小时 / -8 小时 / 不调整）
+- 上传 Outbase 前自动按设置修正 FIT 时间戳（FIT 逐字节滑动窗口扫描 + 修正后重算 CRC，GPX 走 GpxTimeFixer）；**默认不调整**，不影响既有行为
+- 新增 16 条单元测试覆盖 FIT 时间戳平移/CRC 重算/窗口边界/当天-历史键判定
 
 ### v9.1.2（2026-10-14）
 - **新增数据源：CyCity**——手机号+密码纯 API 直接登录（对齐开发版 v8.9.1），作为下载来源，把 CyCity 骑行记录同步到 Outbase

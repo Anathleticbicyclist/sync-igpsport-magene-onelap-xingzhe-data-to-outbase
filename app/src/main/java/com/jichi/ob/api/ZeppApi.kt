@@ -291,6 +291,12 @@ class ZeppApi {
         if (validateToken(token)) "Zepp用户" else null
     }
 
+    /** v8.6.6: 从 prefs 恢复已保存的账号密码（App 重启后支持自动重登） */
+    fun restoreCredentials(account: String?, password: String?) {
+        if (!account.isNullOrEmpty()) lastAccount = account
+        if (!password.isNullOrEmpty()) lastPassword = password
+    }
+
     /** 401 时用最近一次账号密码重新登录（内存兜底） */
     suspend fun reLoginIfNeeded(): LoginResult? = withContext(Dispatchers.IO) {
         val a = lastAccount ?: return@withContext null

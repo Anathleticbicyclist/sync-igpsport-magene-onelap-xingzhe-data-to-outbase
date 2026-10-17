@@ -25,6 +25,10 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
 import kotlin.coroutines.resume
@@ -803,7 +807,35 @@ class GarminApi {
         val expired = sess.diExpiresAt <= 0 || now >= sess.diExpiresAt - 60
         if (!expired) return@withContext cred  // 未过期
         addDebugLog("ensureValidToken: DI token已过期，尝试静默刷新...")
-        refreshDiToken(ds, cred) ?: cred
+        val refreshed = refreshDiToken(ds, cred)
+        if (refreshed != null) return@withContext refreshed
+        // v8.6.2: 刷新失败，尝试用记住的账号密码自动重新登录（仅佳明中国）
+        if (ds == DataSource.GARMIN_CN) {
+            try {
+                val sp = appContext?.getSharedPreferences("jichi_ob", android.content.Context.MODE_PRIVATE)
+                val email = sp?.getString("garmin_cn_email", null)
+                val password = sp?.getString("garmin_cn_password", null)
+                if (!email.isNullOrEmpty() && !password.isNullOrEmpty()) {
+                    addDebugLog("ensureValidToken: 刷新失败，自动用保存的账号重新登录佳明中国($email)...")
+                    val oauth2 = GarminOAuthHelper.loginWithCredentialsCn(email, password)
+                    val newCred = JSONObject().apply {
+                        put("di_token", oauth2.accessToken)
+                        put("di_refresh_token", oauth2.refreshToken)
+                        put("di_client_id", "GCM_ANDROID_DARK")
+                        put("jwt_web", "")
+                        put("session", "")
+                        put("csrf", "")
+                        put("email", email)
+                    }.toString()
+                    sp.edit().putString("garmin_cn_token", newCred).putString("garmin_cn_cookie", "").apply()
+                    addDebugLog("ensureValidToken: ✅ 佳明中国自动重新登录成功")
+                    return@withContext newCred
+                }
+            } catch (e: Exception) {
+                addDebugLog("ensureValidToken: 自动重新登录失败: ${e.message}")
+            }
+        }
+        cred
     }
 
     private fun gcApiHost(ds: DataSource): String =
@@ -1275,7 +1307,11 @@ class GarminApi {
                         val item = arr.getJSONObject(i)
                         val id = item.optString("activityId")
                         if (id.isEmpty()) continue
-                        val startLocal = item.optString("startTimeLocal").ifBlank { item.optString("startTimeGMT") }
+                        // v9.1.1: 解析佳明活动开始时间（v8.9.4 对齐）+ 运动类型 typeKey → sportType（v9.1.0 对齐）
+                        val startLocal = resolveGarminTime(item)
+                        val actType = item.optJSONObject("activityType")
+                        val typeKey = actType?.optString("typeKey") ?: ""
+                        val sportType = garminTypeKeyToSport(typeKey)
                         out.add(ActivityRecord(
                             id,
                             item.optString("activityName").ifBlank { "佳明活动" },
@@ -1283,7 +1319,8 @@ class GarminApi {
                             item.optDouble("distance", 0.0) / 1000.0,
                             item.optInt("duration", 0),
                             ds,
-                            startTimeMs = com.jichi.ob.util.ActivityCache.parseStartTimeMs(startLocal)
+                            startTimeMs = com.jichi.ob.util.ActivityCache.parseStartTimeMs(startLocal),
+                            sportType = sportType
                         ))
                     }
                     addDebugLog("getActivities DI成功: ${out.size}条")
@@ -1302,11 +1339,16 @@ class GarminApi {
                             val item = arr.getJSONObject(i)
                             val id = item.optString("activityId")
                             if (id.isEmpty()) continue
-                            val startLocal = item.optString("startTimeLocal").ifBlank { item.optString("startTimeGMT") }
+                            // v9.1.1: 佳明活动开始时间解析 + 运动类型 typeKey → sportType
+                            val startLocal = resolveGarminTime(item)
+                            val actType = item.optJSONObject("activityType")
+                            val typeKey = actType?.optString("typeKey") ?: ""
+                            val sportType = garminTypeKeyToSport(typeKey)
                             out.add(ActivityRecord(id, item.optString("activityName").ifBlank { "佳明活动" },
                                 startLocal,
                                 item.optDouble("distance", 0.0) / 1000.0, item.optInt("duration", 0), ds,
-                                startTimeMs = com.jichi.ob.util.ActivityCache.parseStartTimeMs(startLocal)))
+                                startTimeMs = com.jichi.ob.util.ActivityCache.parseStartTimeMs(startLocal),
+                                sportType = sportType))
                         }
                         return@withContext out
                     }
@@ -1327,17 +1369,84 @@ class GarminApi {
                     val item = arr.getJSONObject(i)
                     val id = item.optString("activityId")
                     if (id.isEmpty()) continue
-                    val startLocal = item.optString("startTimeLocal").ifBlank { item.optString("startTimeGMT") }
+                    // v9.1.1: 佳明活动开始时间解析 + 运动类型 typeKey → sportType
+                    val startLocal = resolveGarminTime(item)
+                    val actType = item.optJSONObject("activityType")
+                    val typeKey = actType?.optString("typeKey") ?: ""
+                    val sportType = garminTypeKeyToSport(typeKey)
                     out.add(ActivityRecord(id, item.optString("activityName").ifBlank { "佳明活动" },
                         startLocal,
                         item.optDouble("distance", 0.0) / 1000.0, item.optInt("duration", 0), ds,
-                        startTimeMs = com.jichi.ob.util.ActivityCache.parseStartTimeMs(startLocal)))
+                        startTimeMs = com.jichi.ob.util.ActivityCache.parseStartTimeMs(startLocal),
+                        sportType = sportType))
                 }
                 out
             }
         } catch (e: Exception) {
             addDebugLog("getActivities异常: ${e.message}")
             emptyList()
+        }
+    }
+
+    /** v9.1.1: 解析佳明活动开始时间（对齐开发版 v8.9.4）。
+     *  优先用 startTimeLocal（已是本地时间）；缺失则 fallback 到 startTimeGMT（UTC），
+     *  必须把 UTC+8 转成本地时间字符串，否则 FileNameGenerator 生成的文件名差 8 小时，
+     *  目标平台从文件名解析活动时间就会差 8 小时。 */
+    private fun resolveGarminTime(item: org.json.JSONObject): String {
+        val local = item.optString("startTimeLocal").trim()
+        if (local.isNotEmpty()) return local
+        val gmt = item.optString("startTimeGMT").trim()
+        if (gmt.isEmpty()) return ""
+        return try {
+            val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }
+            val date = fmt.parse(gmt) ?: return gmt
+            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(date)
+        } catch (_: Exception) {
+            gmt
+        }
+    }
+
+    /** v9.1.1: 佳明 activityType.typeKey → 通用 sportType 字符串（对齐开发版 v9.1.0，全量映射） */
+    private fun garminTypeKeyToSport(typeKey: String): String? {
+        if (typeKey.isBlank()) return null
+        val k = typeKey.lowercase()
+        return when {
+            // ===== 骑行类 =====
+            k.contains("cycling") || k.contains("biking") || k.contains("bike") ||
+            k.contains("riding") || k.contains("cyclocross") || k.contains("gravel") -> "cycling"
+
+            // ===== 跑步类 =====
+            k.contains("running") || k == "run" || k.contains("treadmill") ||
+            k.contains("trail_run") || k.contains("track_run") -> "running"
+
+            // ===== 徒步/步行 =====
+            k == "hiking" || k.contains("hike") || k.contains("backpacking") -> "hiking"
+            k == "walking" || k == "walk" || k.contains("walking") -> "walking"
+
+            // ===== 登山/雪上运动 =====
+            k.contains("mountaineer") -> "mountaineering"
+            k.contains("ski") || k.contains("snowboard") || k.contains("snowshoe") -> "skiing"
+
+            // ===== 游泳类 =====
+            k.contains("swim") || k == "pool" || k == "open_water" -> "swimming"
+
+            // ===== 划船/水上运动 =====
+            k.contains("row") || k.contains("kayak") || k.contains("canoe") ||
+            k.contains("paddle") || k.contains("surf") -> "rowing"
+
+            // ===== 铁三/多项运动 =====
+            k.contains("triathlon") || k.contains("multisport") -> "triathlon"
+
+            // ===== 力量/训练/健身类 =====
+            k.contains("strength") || k.contains("weight") || k.contains("training") ||
+            k.contains("workout") || k.contains("fitness") || k.contains("gym") ||
+            k.contains("elliptical") || k.contains("stair") || k.contains("climb") ||
+            k.contains("yoga") || k.contains("pilates") || k.contains("meditation") ||
+            k.contains("flexibility") || k.contains("indoor_cardio") || k.contains("cardio") -> "training"
+
+            else -> null  // 未知类型，走GPX <name>检测兜底
         }
     }
 

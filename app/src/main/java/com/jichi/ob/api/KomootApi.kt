@@ -118,6 +118,12 @@ class KomootApi {
         if (validateToken(email, token)) "Komoot用户" else null
     }
 
+    /** v8.6.6: 从 prefs 恢复已保存的账号密码（App 重启后支持自动重登） */
+    fun restoreCredentials(email: String?, password: String?) {
+        if (!email.isNullOrEmpty()) lastEmail = email
+        if (!password.isNullOrEmpty()) lastPassword = password
+    }
+
     /** token 失效时用最近一次登录的邮箱密码重新登录（内存兜底） */
     suspend fun reLoginIfNeeded(): LoginResult? = withContext(Dispatchers.IO) {
         val e = lastEmail ?: return@withContext null

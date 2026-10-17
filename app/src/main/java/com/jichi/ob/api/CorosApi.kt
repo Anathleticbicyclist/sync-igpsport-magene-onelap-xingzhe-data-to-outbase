@@ -1,3 +1,4 @@
+
 package com.jichi.ob.api
 
 import android.util.Log
@@ -123,17 +124,25 @@ class CorosApi {
      * 尝试从 /account 接口获取，失败则从活动列表第一条记录的 userId 字段提取
      */
     suspend fun getUserId(cred: String): String = withContext(Dispatchers.IO) {
-        val (token, regionId, _) = parseCredential(cred)
+        val parts = cred.split(";")
+        val token = parts.getOrNull(0) ?: ""
+        val regionId = parts.getOrNull(1)?.toIntOrNull() ?: 2
+        // v8.7.5: WebView 登录时已从 localStorage 抓到 userId（第3段），直接用
+        val savedUserId = parts.getOrNull(2) ?: ""
+        if (savedUserId.length >= 6 && savedUserId.all { it.isDigit() }) {
+            Log.w(TAG, "getUserId: 使用 WebView 捕获的 userId=$savedUserId")
+            return@withContext savedUserId
+        }
         if (token.isEmpty()) return@withContext "0"
         try {
-            // 尝试1: GET /account（高驰Training Hub用户信息接口）
-            val url1 = "${teamApi(regionId)}/account"
+            // 尝试1: GET /account/query（v8.7.5修复：原 /account 已404，正确路径是 /account/query）
+            val url1 = "${teamApi(regionId)}/account/query"
             val req1 = Request.Builder().url(url1).apply {
                 authHeaders(token, regionId).forEach { (k, v) -> addHeader(k, v) }
             }.get().build()
             client.newCall(req1).execute().use { resp ->
                 val body = resp.body?.string() ?: ""
-                Log.d(TAG, "getUserId /account HTTP ${resp.code}: ${body.take(300)}")
+                Log.w(TAG, "getUserId /account/query HTTP ${resp.code}: ${body.take(200)}")
                 if (resp.code == 200) {
                     val json = JSONObject(body)
                     if (json.optString("result") == "0000") {
@@ -143,7 +152,7 @@ class CorosApi {
                     }
                 }
             }
-        } catch (e: Exception) { Log.w(TAG, "getUserId /account error: ${e.message}") }
+        } catch (e: Exception) { Log.w(TAG, "getUserId /account/query error: ${e.message}") }
         try {
             // 尝试2: 从活动列表第一条记录提取 userId
             val url2 = "${teamApi(regionId)}/activity/query?modeList=&pageNumber=1&size=1"
@@ -152,7 +161,7 @@ class CorosApi {
             }.get().build()
             client.newCall(req2).execute().use { resp ->
                 val body = resp.body?.string() ?: ""
-                Log.d(TAG, "getUserId activity/query HTTP ${resp.code}: ${body.take(400)}")
+                Log.w(TAG, "getUserId activity/query HTTP ${resp.code}: ${body.take(400)}")
                 if (resp.code == 200) {
                     val json = JSONObject(body)
                     if (json.optString("result") == "0000") {
@@ -176,8 +185,8 @@ class CorosApi {
         fallback
     }
 
-    /** 获取活动列表 */
-    suspend fun getActivities(cred: String, offset: Int, limit: Int): List<ActivityRecord> = withContext(Dispatchers.IO) {
+    /** 获取活动列表（v8.2.4: ds 区分中国/国际，避免国际记录被错标为中国） */
+    suspend fun getActivities(cred: String, offset: Int, limit: Int, ds: DataSource = DataSource.COROS_CN): List<ActivityRecord> = withContext(Dispatchers.IO) {
         val (token, regionId, _) = parseCredential(cred)
         if (token.isEmpty()) return@withContext emptyList()
         try {
@@ -216,8 +225,10 @@ class CorosApi {
                     val startTime = item.optString("startTime").ifBlank { "" }
                     val distance = item.optDouble("distance", 0.0) / 1000.0
                     val duration = item.optInt("duration", 0)
-                    out.add(ActivityRecord(labelId, title, startTime, distance, duration, DataSource.COROS_CN,
-                        extra = "sportType=$sportType"))
+                    // v8.2.4: 补 startTimeMs（时间=0会沉底/日期检索失效）；ds 区分中国/国际
+                    out.add(ActivityRecord(labelId, title, startTime, distance, duration, ds,
+                        extra = "sportType=$sportType",
+                        startTimeMs = com.jichi.ob.util.ActivityCache.parseStartTimeMs(startTime)))
                 }
                 if (pageList.length() < 200) break // 最后一页，没有更多数据
                 currentOffset = page * 200
@@ -275,6 +286,10 @@ class CorosApi {
             val zipData = zipFitData(fitData, activityId, fileName)
             val md5 = md5Hex(zipData)
             val size = zipData.size
+            // v8.7.3: 高驰要求文件20KB~200MB，0距离空轨迹（<20KB）提前友好跳过，不浪费STS请求
+            if (size < 20 * 1024) {
+                return@withContext "高驰文件过小需≥20KB（当前${size}字节，疑似空轨迹/0距离运动），已跳过"
+            }
             // 获取 userId，object key 格式 fit_zip/{userId}/{md5}.zip
             val userId = getUserId(cred)
             val objectKey = "fit_zip/$userId/$md5.zip"
@@ -284,8 +299,16 @@ class CorosApi {
             Log.i(TAG, "uploadFit: fit=${fitData.size}B→zip=${size}B, md5=$md5, userId=$userId, key=$objectKey, oriFileName=$zipFileName")
 
             // 1) 获取 STS 凭证
-            val stsUrl = "https://faq.coros.com/openapi/oss/sts?bucket=$bucket&service=${sts.service}&app_id=$STS_APP_ID&sign=${sts.sign}&v=$STS_V"
-            val stsReq = Request.Builder().url(stsUrl).addHeader("User-Agent", UA).get().build()
+            // v8.7.3: 高驰已下线旧的 faq.coros.com/openapi/oss/sts（返回404），
+            // 改走训练中心 BFF 代理 {host}/api/proxy/oss/sts，用登录 token 作 Cookie: CPL-coros-token 鉴权
+            val trainingHost = REGIONCONFIG[regionId]?.host ?: "https://trainingcn.coros.com"
+            val stsUrl = "$trainingHost/api/proxy/oss/sts?bucket=$bucket&service=${sts.service}&v=$STS_V"
+            val stsReq = Request.Builder().url(stsUrl)
+                .addHeader("User-Agent", UA)
+                .addHeader("Cookie", "CPL-coros-token=$token")
+                .addHeader("Referer", "$trainingHost/")
+                .addHeader("Origin", trainingHost)
+                .get().build()
             val credJson = client.newCall(stsReq).execute().use { resp ->
                 val rawBody = resp.body?.string() ?: ""
                 Log.d(TAG, "STS HTTP ${resp.code}: ${rawBody.take(300)}")
@@ -297,16 +320,22 @@ class CorosApi {
                 val dataObj = json.optJSONObject("data")
                 val enc = dataObj?.optString("credentials") ?: dataObj?.optString("credential")
                     ?: json.optString("credentials") ?: return@withContext "高驰OSS STS无凭证: ${rawBody.take(150)}"
-                decodeSts(enc)
+                val decoded = decodeSts(enc)
+                // v8.7.4: 打印凭证字段名+ak前缀，确认BFF返回格式与旧端点一致
+                val fieldNames = StringBuilder()
+                val it = decoded.keys()
+                while (it.hasNext()) fieldNames.append(it.next()).append(",")
+                Log.i(TAG, "STS凭证字段: $fieldNames ak=${decoded.optString("AccessKeyId").take(10)}...")
+                decoded
             }
             // 2) 上传 ZIP 到 OSS
-            val upOk = when (sts.service) {
+            val upErr = when (sts.service) {
                 "aliyun" -> uploadAliyunOss(bucket, objectKey, zipData, credJson)
                 else -> uploadAwsS3(bucket, objectKey, zipData, credJson, regionId)
             }
-            if (!upOk) {
-                Log.w(TAG, "OSS上传失败, bucket=$bucket, key=$objectKey, service=${sts.service}, size=$size")
-                return@withContext "高驰OSS上传失败"
+            if (upErr != null) {
+                Log.w(TAG, "OSS上传失败: $upErr, bucket=$bucket, key=$objectKey, service=${sts.service}, size=$size")
+                return@withContext upErr
             }
             Log.i(TAG, "OSS上传成功: $objectKey ($size bytes)")
             // 3) fit/import 注册（元数据调用，不传文件）
@@ -372,12 +401,12 @@ class CorosApi {
         return JSONObject(decoded)
     }
 
-    /** 阿里云 OSS PUT（OSS V1 签名） */
-    private fun uploadAliyunOss(bucket: String, key: String, data: ByteArray, cred: JSONObject): Boolean {
+    /** 阿里云 OSS PUT（OSS V1 签名）。返回 null=成功，否则错误描述 */
+    private fun uploadAliyunOss(bucket: String, key: String, data: ByteArray, cred: JSONObject): String? {
         return try {
-            val ak = cred.getString("AccessKeyId")
-            val sk = cred.getString("AccessKeySecret")
-            val token = cred.getString("SecurityToken")
+            val ak = cred.optString("AccessKeyId").ifEmpty { return "OSS凭证缺AccessKeyId: ${cred.keys()}" }
+            val sk = cred.optString("AccessKeySecret").ifEmpty { return "OSS凭证缺AccessKeySecret" }
+            val token = cred.optString("SecurityToken").ifEmpty { return "OSS凭证缺SecurityToken" }
             val sdf = java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", java.util.Locale.US)
             sdf.timeZone = java.util.TimeZone.getTimeZone("GMT")
             val date = sdf.format(java.util.Date())
@@ -393,18 +422,22 @@ class CorosApi {
                 .addHeader("Content-Type", contentType)
                 .addHeader("x-oss-security-token", token)
                 .build()
-            client.newCall(req).execute().use { it.code in 200..299 }
+            client.newCall(req).execute().use { resp ->
+                val body = resp.body?.string() ?: ""
+                Log.w(TAG, "OSS PUT HTTP ${resp.code}, body=${body.take(300)}, ak前缀=${ak.take(8)}")
+                if (resp.code in 200..299) null else "OSS PUT HTTP ${resp.code}: ${body.take(150)}"
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "aliyun oss error", e); false
+            Log.e(TAG, "aliyun oss error", e); "OSS异常: ${e.message}"
         }
     }
 
-    /** AWS S3 PUT（SigV4 签名） */
-    private fun uploadAwsS3(bucket: String, key: String, data: ByteArray, cred: JSONObject, regionId: Int): Boolean {
+    /** AWS S3 PUT（SigV4 签名）。返回 null=成功，否则错误描述 */
+    private fun uploadAwsS3(bucket: String, key: String, data: ByteArray, cred: JSONObject, regionId: Int): String? {
         return try {
-            val ak = cred.getString("AccessKeyId")
-            val sk = cred.getString("AccessKeySecret")
-            val token = cred.getString("SecurityToken")
+            val ak = cred.optString("AccessKeyId").ifEmpty { return "S3凭证缺AccessKeyId" }
+            val sk = cred.optString("AccessKeySecret").ifEmpty { return "S3凭证缺AccessKeySecret" }
+            val token = cred.optString("SecurityToken").ifEmpty { return "S3凭证缺SecurityToken" }
             val region = if (regionId == 3) "eu-central-1" else "us-east-1"
             val now = java.util.Calendar.getInstance()
             val amzDate = java.text.SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(now.time)
@@ -427,9 +460,13 @@ class CorosApi {
                 .addHeader("x-amz-content-sha256", payloadHash)
                 .addHeader("x-amz-security-token", token)
                 .build()
-            client.newCall(req).execute().use { it.code in 200..299 }
+            client.newCall(req).execute().use { resp ->
+                val body = resp.body?.string() ?: ""
+                Log.w(TAG, "S3 PUT HTTP ${resp.code}, body=${body.take(300)}")
+                if (resp.code in 200..299) null else "S3 PUT HTTP ${resp.code}: ${body.take(150)}"
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "aws s3 error", e); false
+            Log.e(TAG, "aws s3 error", e); "S3异常: ${e.message}"
         }
     }
 
@@ -455,3 +492,4 @@ class CorosApi {
     private fun hmacSha256Hex(key: ByteArray, data: String): String =
         hmacSha256(key, data).joinToString("") { "%02x".format(it) }
 }
+

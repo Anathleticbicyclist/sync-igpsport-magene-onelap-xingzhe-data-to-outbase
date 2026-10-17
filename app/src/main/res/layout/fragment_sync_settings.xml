@@ -195,7 +195,32 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- 卡片6：存储 -->
+        <!-- 卡片6：时区修正设置（v9.2.0，按平台设置当天/历史时区调整） -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp" app:cardCornerRadius="16dp" app:cardElevation="1dp">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:gravity="center_vertical"
+                android:paddingStart="16dp" android:paddingEnd="16dp" android:paddingTop="12dp" android:paddingBottom="12dp">
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="时区修正设置" android:textSize="14sp" android:textStyle="bold"
+                        android:textColor="@color/text_primary" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="按平台单独设置当天/历史时区调整（+8/-8小时）" android:textSize="11sp"
+                        android:textColor="@color/text_secondary" android:layout_marginTop="2dp" />
+                </LinearLayout>
+                <TextView android:id="@+id/btnTimeZoneEntry" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="设置" android:textSize="12sp" android:textStyle="bold"
+                    android:textColor="@color/primary_dark"
+                    android:background="@drawable/input_box_bg" android:paddingStart="12dp" android:paddingEnd="12dp"
+                    android:paddingTop="5dp" android:paddingBottom="5dp"
+                    android:clickable="true" android:focusable="true" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- 卡片7：存储 -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginBottom="6dp" app:cardCornerRadius="16dp" app:cardElevation="1dp">

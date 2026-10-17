@@ -1207,7 +1207,7 @@ class LoginWebActivity : AppCompatActivity() {
         }.start()
     }
 
-    /** v6.5.0: 高驰 检测登录 —— 读取 CPL-coros-token / CPL-coros-region cookie */
+    /** v6.5.0: 高驰 检测登录 —— 读取 CPL-coros-token / CPL-coros-region cookie，并从 localStorage 读 userId（v8.7.5） */
     private fun detectCoros(cn: Boolean) {
         val host = if (cn) "https://trainingcn.coros.com" else "https://training.coros.com"
         val hostPlain = if (cn) "trainingcn.coros.com" else "training.coros.com"
@@ -1221,11 +1221,51 @@ class LoginWebActivity : AppCompatActivity() {
         if (token.length < 10) return
         detected = true
         val regionId = region.ifEmpty { if (cn) "2" else "1" }
-        Log.i(TAG, "✅ 高驰${if (cn) "中国" else "国际"}登录成功, region=$regionId, token len=${token.length}")
-        setResult(Activity.RESULT_OK, Intent()
-            .putExtra(RESULT_SESSION_ID, "$token;$regionId;$all")
-            .putExtra(RESULT_LOGIN_TYPE, if (cn) TYPE_COROS_CN else TYPE_COROS_INT))
-        finish()
+        // v8.7.5: 延迟2秒等前端JS把userId写入localStorage，再读取
+        webView.postDelayed({
+            val js = """(function(){
+                var out = {};
+                try { for (var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); out[k]=localStorage.getItem(k); } } catch(e){}
+                return JSON.stringify(out);
+            })();"""
+            webView.evaluateJavascript(js) { raw ->
+                var userId = ""
+                try {
+                    val rawStr = (raw ?: "{}").trim().removePrefix("\"").removeSuffix("\"").replace("\\\"","\"").replace("\\\\","\\")
+                    val obj = org.json.JSONObject(rawStr)
+                    // dump 所有 key 名到日志（诊断用）
+                    val keys = StringBuilder()
+                    val it = obj.keys()
+                    while (it.hasNext()) keys.append(it.next()).append(",")
+                    Log.w(TAG, "高驰localStorage keys: $keys")
+                    // 常见 key：userId/userIdStr/userInfo/user/user_id
+                    val keysToTry = listOf("userId","userIdStr","user_id","uid","userIdStr")
+                    for (k in keysToTry) {
+                        val v = obj.optString(k, "")
+                        if (v.length >= 6 && v.all { it.isDigit() }) { userId = v; break }
+                    }
+                    // 兜底：从任意 value 里正则找长数字串（15位以上大概率是userId）
+                    if (userId.isEmpty()) {
+                        val mit = obj.keys()
+                        while (mit.hasNext()) {
+                            val k = mit.next()
+                            val s = obj.optString(k, "")
+                            val m = Regex("\\b(\\d{15,20})\\b").find(s)
+                            if (m != null) { userId = m.groupValues[1]; Log.w(TAG, "userId从${k}里正则提取: $userId"); break }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "parse localStorage userId error: ${e.message}, raw=${raw?.take(200)}")
+                }
+                Log.i(TAG, "✅ 高驰${if (cn) "中国" else "国际"}登录成功, region=$regionId, userId=$userId, token len=${token.length}")
+                // session 格式: token;regionId;userId;cookie
+                val session = "$token;$regionId;$userId;$all"
+                setResult(Activity.RESULT_OK, Intent()
+                    .putExtra(RESULT_SESSION_ID, session)
+                    .putExtra(RESULT_LOGIN_TYPE, if (cn) TYPE_COROS_CN else TYPE_COROS_INT))
+                finish()
+            }
+        }, 2000)
     }
 
 

@@ -6,6 +6,7 @@ import com.jichi.ob.model.ActivityRecord
 import com.jichi.ob.model.DataSource
 import com.jichi.ob.model.UploadSupport
 import com.jichi.ob.util.FileNameGenerator
+import com.jichi.ob.util.FitTimeShift
 import com.jichi.ob.util.GpxTimeFixer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -19,6 +20,63 @@ class UploadEngine(private val context: android.content.Context? = null) {
 
     companion object {
         private const val TAG = "UploadEngine"
+
+        /** v8.6.5: 上传结果消息分类（抽成纯函数便于单测）——
+         *  成功=含"成功"且非跳过且非"待处理"；pending=已上传但目标端"待处理/未确认入库"（Outbase异步解析），
+         *  调用方不写已同步记忆、下次重试；OB端处理完返回"已存在"即记已同步，保证最终一致。 */
+        internal fun classifyUploadMsg(msg: String, skipped: Boolean): UploadResult {
+            val isPending = msg.contains("待处理")
+            return UploadResult(
+                success = !skipped && msg.contains("成功") && !isPending,
+                message = msg,
+                skipped = skipped,
+                pending = isPending
+            )
+        }
+
+        /**
+         * v9.2.0: Outbase 上传前时区修正（移植开发版 v9.2.2 applyIgpTimezoneShift）
+         * 按活动来源平台 +（当天/历史）读取用户设置：
+         *   setting 1=+8小时：FIT → FitTimeShift.shiftForIgpsport；GPX → GpxTimeFixer.fixGpxTime(data, -8)（加8）
+         *   setting 2=-8小时：FIT → FitTimeShift.shiftForIgpsportMinus；GPX → GpxTimeFixer.fixGpxTime(data, 8)（减8）
+         *   setting 0=不调整（默认）：原样返回
+         * 无 context（如单测）或未设置时一律不调整，不影响既有行为。
+         */
+        @JvmStatic
+        internal fun applyTimezoneShiftForOutbase(
+            context: android.content.Context?,
+            data: ByteArray,
+            record: ActivityRecord
+        ): ByteArray {
+            val ctx = context ?: return data
+            // 与开发版一致的 FIT 判定（data[8]='F' && [9]='I' && [10]='T'）
+            val isFit = data.size >= 12 &&
+                    data[8] == 'F'.code.toByte() &&
+                    data[9] == 'I'.code.toByte() &&
+                    data[10] == 'T'.code.toByte()
+
+            val key = FitTimeShift.timeShiftSettingKey(record.source, record.startTimeMs)
+            val setting = try {
+                ctx.getSharedPreferences("jichi_ob_prefs", android.content.Context.MODE_PRIVATE)
+                    .getInt(key, 0)
+            } catch (_: Exception) { 0 }
+            if (setting == 0) return data
+
+            val startMs = record.startTimeMs
+            return when {
+                setting == 1 -> {
+                    Log.d(TAG, "iGP时区修正+8h（按平台设置） key=$key")
+                    if (isFit) FitTimeShift.shiftForIgpsport(data, startMs)
+                    else GpxTimeFixer.fixGpxTime(data, -8)
+                }
+                setting == 2 -> {
+                    Log.d(TAG, "iGP时区修正-8h（按平台设置） key=$key")
+                    if (isFit) FitTimeShift.shiftForIgpsportMinus(data, startMs)
+                    else GpxTimeFixer.fixGpxTime(data, 8)
+                }
+                else -> data
+            }
+        }
     }
 
     /** v6.2.6: Outbase GPX→FIT 转换桥（Outbase官方gpx2fit库，复用WebBridge/bridge.html/gpx2fit.js） */
@@ -32,7 +90,10 @@ class UploadEngine(private val context: android.content.Context? = null) {
         val success: Boolean,
         val targetId: String = "",
         val message: String = "",
-        val skipped: Boolean = false
+        val skipped: Boolean = false,
+        val pending: Boolean = false
+        // v8.6.5: pending=true = 已上传但目标端"待处理/未确认入库"（如Outbase异步解析），
+        // 调用方不写已同步记忆，下次自动重试；目标端处理完返回"已存在"即记已同步，保证最终一致
     )
 
     /**
@@ -68,7 +129,11 @@ class UploadEngine(private val context: android.content.Context? = null) {
         val uploadData = utcData
 
         when (target) {
-            DataSource.OUTBASE -> uploadToOutbase(credential, uploadData, record, extra)
+            DataSource.OUTBASE -> {
+                // v9.2.0: 上传前按平台时区设置修正（默认不调整，无副作用）
+                val tzData = applyTimezoneShiftForOutbase(context, uploadData, record)
+                uploadToOutbase(credential, tzData, record, extra)
+            }
             else -> UploadResult(false, message = "正式版仅支持上传到 Outbase")
         }
     }
@@ -85,8 +150,9 @@ class UploadEngine(private val context: android.content.Context? = null) {
                 fitData
             } else if (record.source == DataSource.KEEP) {
                 try {
-                    val f = com.jichi.ob.GpxToFitConverter.convert(fitData)
-                    Log.d(TAG, "Outbase Keep->FIT(自研, 自动识别sport): ${fitData.size} -> ${f.size} bytes")
+                    // v9.1.1: 优先用record.sportType转换，兜底GPX <name>检测（对齐开发版v9.1.0）
+                    val f = com.jichi.ob.GpxToFitConverter.convertWithSportType(fitData, record.sportType)
+                    Log.d(TAG, "Outbase Keep->FIT(自研, sportType=${record.sportType}): ${fitData.size} -> ${f.size} bytes")
                     f
                 } catch (e: Exception) {
                     Log.w(TAG, "Outbase Keep自研转换失败: ${e.message}")
@@ -104,8 +170,9 @@ class UploadEngine(private val context: android.content.Context? = null) {
                     null
                 }
                 officialFit ?: try {
-                    val f = com.jichi.ob.GpxToFitConverter.convert(fitData)
-                    Log.d(TAG, "Outbase GPX->FIT(自研兜底): ${fitData.size} -> ${f.size} bytes")
+                    // v9.1.1: 优先用record.sportType转换（佳明等平台已解析），兜底GPX <name>检测（对齐开发版v9.1.0）
+                    val f = com.jichi.ob.GpxToFitConverter.convertWithSportType(fitData, record.sportType)
+                    Log.d(TAG, "Outbase GPX->FIT(自研兜底, sportType=${record.sportType}): ${fitData.size} -> ${f.size} bytes")
                     f
                 } catch (e: Exception) {
                     Log.w(TAG, "Outbase 自研转换也失败: ${e.message}")
@@ -117,7 +184,9 @@ class UploadEngine(private val context: android.content.Context? = null) {
             // v8.2.1: Outbase 服务端处理为异步（"待处理"），大批量秒传易触发服务端限流导致"处理失败"。
             // 每条成功后节流 400ms，摊平上传频率，降低风控概率。
             kotlinx.coroutines.delay(400)
-            UploadResult(!skipped && msg.contains("成功"), message = msg, skipped = skipped)
+            // v8.6.5: "待处理"不算确认成功——OB异步解析入库未知，标记 pending，调用方不写已同步记忆，
+            // 下次自动重试；OB端处理完返回"已存在"即记已同步，保证最终一致。
+            classifyUploadMsg(msg, skipped)
         } catch (e: Exception) {
             Log.e(TAG, "Outbase upload error", e)
             UploadResult(false, message = "Outbase上传失败: ${e.message}")

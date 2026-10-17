@@ -308,6 +308,7 @@ class AutoSyncWorker(
                 val activities = try {
                     when (source) {
                         DataSource.IGPSPORT -> igpsportApi.getActivities(sourceCred, 0, 8)
+                        DataSource.IGPSPORT_INT -> igpsportApi.getActivitiesInternational(sourceCred, 0, 8)
                         DataSource.XINGZHE -> xingzheApi.getActivities(sourceCred, 0, 8)
                         DataSource.MAGENE -> getMageneActivitiesWithRefresh(sourceCred, 0, 8)
                         DataSource.BLACKBIRD -> blackbirdApi.getActivities(sourceCred, 0, 8)
@@ -315,8 +316,8 @@ class AutoSyncWorker(
                         // v8.1.2: 自动同步数据源扩展到10个（对齐开发体验版 v7.8.3）
                         DataSource.GARMIN_COM -> garminApi.getActivities(source, sourceCred, 0, 8)
                         DataSource.GARMIN_CN -> garminApi.getActivities(source, sourceCred, 0, 8)
-                        DataSource.COROS_CN -> corosApi.getActivities(sourceCred, 0, 8)
-                        DataSource.COROS_INT -> corosApi.getActivities(sourceCred, 0, 8)
+                        DataSource.COROS_CN -> corosApi.getActivities(sourceCred, 0, 8, DataSource.COROS_CN)
+                        DataSource.COROS_INT -> corosApi.getActivities(sourceCred, 0, 8, DataSource.COROS_INT)
                         DataSource.WAHOO -> getWahooActivitiesWithRefresh(sourceCred, 0, 8)
                         DataSource.MYWHOOSH -> mywhooshApi.getActivities(sourceCred, prefs.getMywhooshWhooshId() ?: "", 0, 8)
                         DataSource.ZWIFT -> getZwiftActivitiesWithRefresh(sourceCred, prefs.getZwiftPlayerId(), prefs.getZwiftRefreshToken(), 0, 8)
@@ -348,7 +349,9 @@ class AutoSyncWorker(
                 } catch (_: Exception) {}
                 // 记录源平台最新活动日期（用于通知显示"最近检测的运动日期"）
                 activities.firstOrNull()?.let { detectedDate = it.startTime }
-                for (record in activities.take(5)) {
+                // v8.6.5: 取消 take(5) 截断——修复"积累>5条新记录时只有最新5条被同步、更早记录被饿死"问题。
+                // isSynced 记忆逐条判断保证已同步的不重复处理，全量遍历无重复风险。
+                for (record in activities) {
                     try {
                         // v8.1.0: 日期截止过滤 —— 开启后自动同步也只同步指定日期之前的数据
                         if (prefs.isDateCutoffEnabled()) {
@@ -399,6 +402,13 @@ class AutoSyncWorker(
                                 prefs.addSyncedId(syncKey)
                                 skippedDetails.add("${formatDate(record.startTime)} ${record.title.take(20)} → ${target.displayName}")
                                 plog("⏭️ 已存在跳过: ${target.displayName}")
+                            } else if (result.pending) {
+                                // v8.6.5: 已上传但目标端"待处理/未确认入库"——不写已同步记忆，下次自动同步重试；
+                                // OB端处理完会返回"已存在"→记已同步，保证最终一致，不再静默假成功。
+                                skipped++
+                                statMap.getOrPut(source.shortName){IntArray(3)}[1]++
+                                skippedDetails.add("${formatDate(record.startTime)} ${record.title.take(20)} → ${target.displayName}（已上传待确认）")
+                                plog("🕐 已上传待确认: ${target.displayName} - ${result.message.take(60)}")
                             } else {
                                 failed++
                                 statMap.getOrPut(source.shortName){IntArray(3)}[2]++
@@ -456,9 +466,18 @@ class AutoSyncWorker(
                 } catch (_: Exception) { null }
             }
             DataSource.BLACKBIRD -> blackbirdApi.downloadActivity(cred, record.id)
+            // v8.8.6: 百锐腾改用移动端 REST 下载原始 FIT（网页端 /api/activity/{id}/fit 返回 SPA HTML）
             DataSource.BRYTON -> {
-                try { brytonApi.downloadFit(cred, record.id) } catch (_: Exception) { brytonApi.downloadGpx(cred, record.id) }
+                val tok = prefs.getBrytonToken()
+                val uid = prefs.getBrytonUserId()
+                if (tok != null && uid != null) {
+                    brytonApi.downloadFitMobile(uid, tok, record.id)
+                        ?: try { brytonApi.downloadFit(cred, record.id) } catch (_: Exception) { brytonApi.downloadGpx(cred, record.id) }
+                } else {
+                    try { brytonApi.downloadFit(cred, record.id) } catch (_: Exception) { brytonApi.downloadGpx(cred, record.id) }
+                }
             }
+            DataSource.IGPSPORT_INT -> igpsportApi.downloadFitInternational(cred, record.id)
             // v8.1.2: 自动同步数据源扩展到10个（对齐开发体验版 v7.8.3）
             DataSource.GARMIN_COM -> garminApi.downloadFit(source, cred, record.id)
             DataSource.GARMIN_CN -> garminApi.downloadFit(source, cred, record.id)

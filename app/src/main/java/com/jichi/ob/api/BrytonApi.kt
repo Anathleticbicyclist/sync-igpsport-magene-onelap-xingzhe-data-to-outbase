@@ -26,6 +26,21 @@ class BrytonApi {
         const val LOGIN_URL = "https://active.brytonsport.com"
         private const val BASE = "https://active.brytonsport.com/api"
         private const val PER_PAGE = 20
+        // v8.8.6: 百锐腾移动端 REST API（Bryton Active Android App 通道，m3.brytonactive.com）
+        private const val MOBILE_BASE = "https://m3.brytonactive.com"
+        // 移动端 App 公共 API key（从 Bryton Active Android 客户端提取，intervalssync 开源项目同源使用）
+        private const val MOBILE_API_KEY = "UHIJdntFZFkZaVJsInRHfRcYES08Fwp0Bwkf"
+
+        /**
+         * v8.8.6: FIT 魔数校验——FIT 文件头 12~13 字节固定为 ".FIT"。
+         * 用于拦截 SPA HTML / 错误响应误入库（可单测）。
+         */
+        fun isFitMagic(bytes: ByteArray): Boolean =
+            bytes.size >= 14 &&
+                bytes[8] == '.'.code.toByte() &&
+                bytes[9] == 'F'.code.toByte() &&
+                bytes[10] == 'I'.code.toByte() &&
+                bytes[11] == 'T'.code.toByte()
     }
 
     private val client = OkHttpClient.Builder()
@@ -104,14 +119,17 @@ class BrytonApi {
                     val item = rows.getJSONObject(i)
                     val id = item.optLong("id", item.optLong("activityId", 0))
                     if (id <= 0) continue
+                    // v8.2.4: 补 startTimeMs（时间=0会导致记录中心排序沉底、日期检索失效）
+                    val startRaw = item.optString("startTime", item.optString("start_time", ""))
                     result.add(
                         ActivityRecord(
                             id = id.toString(),
                             title = item.optString("name", item.optString("title", "骑行")),
-                            startTime = item.optString("startTime", item.optString("start_time", "")),
+                            startTime = startRaw,
                             distance = item.optDouble("distance", 0.0) / 1000.0,
                             duration = item.optInt("duration", item.optInt("elapsedTime", 0)),
-                            source = DataSource.BRYTON
+                            source = DataSource.BRYTON,
+                            startTimeMs = com.jichi.ob.util.ActivityCache.parseStartTimeMs(startRaw)
                         )
                     )
                     if (result.size >= limit) break
@@ -138,6 +156,50 @@ class BrytonApi {
             if (bytes.size < 14) throw Exception("FIT文件过小 (${bytes.size} bytes)")
             Log.d(TAG, "FIT downloaded: ${bytes.size} bytes (id=$activityId)")
             bytes
+        }
+
+    /**
+     * v8.8.6: 百锐腾移动端 REST FIT 下载（m3.brytonactive.com）
+     *
+     * 【背景】网页端 active.brytonsport.com/api/activity/{id}/fit 实测返回 SPA HTML 而非真实文件
+     * （v6.2.4 结论"百锐腾官方未开放FIT下载"即源于此）。研究开源项目 intervalssync
+     * （github.com/jorge-huxley/intervalssync，MIT，Python+Flet）发现：Bryton Active Android App
+     * 走 m3.brytonactive.com 移动端 REST，用 Meteor 登录态（X-User-Id/X-Auth-Token）+
+     * x-api-key 即可下载原始 FIT。端点实测存活（未鉴权返回 401，鉴权后返回 FIT）。
+     *
+     * @param userId Meteor userId（登录时注入 localStorage 的 Meteor.userId，Prefs.bryton_user_id）
+     * @param authToken Meteor loginToken（Prefs.bryton_token）
+     * @param activityId 活动ID
+     * @return 原始 FIT 字节；非 FIT（SPA HTML）或失败返回 null
+     */
+    suspend fun downloadFitMobile(userId: String, authToken: String, activityId: String): ByteArray? =
+        withContext(Dispatchers.IO) {
+            try {
+                val req = Request.Builder()
+                    .url("$MOBILE_BASE/api/activity?id=$activityId")
+                    .addHeader("X-User-Id", userId)
+                    .addHeader("X-Auth-Token", authToken)
+                    .addHeader("x-api-key", MOBILE_API_KEY)
+                    .addHeader("User-Agent", "okhttp/4.12.0")
+                    .addHeader("Accept-Encoding", "gzip")
+                    .get().build()
+                val resp = client.newCall(req).execute()
+                if (resp.code !in 200..299) {
+                    Log.w(TAG, "Bryton mobile FIT HTTP ${resp.code} (id=$activityId)")
+                    return@withContext null
+                }
+                val bytes = resp.body?.bytes() ?: return@withContext null
+                // 校验 FIT 魔数（header 12~13 字节为 ".FIT"），防 SPA HTML 误入库
+                if (!isFitMagic(bytes)) {
+                    Log.w(TAG, "Bryton mobile 响应非FIT（${bytes.size}字节，疑似SPA HTML），忽略 (id=$activityId)")
+                    return@withContext null
+                }
+                Log.d(TAG, "Bryton mobile FIT downloaded: ${bytes.size} bytes (id=$activityId)")
+                bytes
+            } catch (e: Exception) {
+                Log.w(TAG, "Bryton mobile FIT 下载异常: ${e.message}")
+                null
+            }
         }
 
     /**

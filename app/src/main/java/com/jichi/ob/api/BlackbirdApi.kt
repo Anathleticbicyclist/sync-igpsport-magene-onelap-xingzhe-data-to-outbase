@@ -146,12 +146,14 @@ class BlackbirdApi {
                 if (rows.length() == 0) break
 
                 for (i in 0 until rows.length()) {
-                    fetched++
-                    if (fetched <= offset) continue
                     val item = rows.getJSONObject(i)
                     val id = item.optLong("recordId", item.optLong("id", 0))
                     if (id <= 0) continue
+                    // v8.2.3.9: lastRecordId 必须在 offset 跳过之前更新——
+                    // 否则 offset≥单页条数时所有行被跳过、游标永远停在0，死循环反复拉第一页（拉不全/卡死）
                     lastRecordId = id
+                    fetched++
+                    if (fetched <= offset) continue
                     result.add(
                         ActivityRecord(
                             id = id.toString(),
@@ -159,7 +161,8 @@ class BlackbirdApi {
                             startTime = formatStartTime(item.optLong("startTime", 0)),
                             distance = item.optDouble("distance", 0.0) / 1000.0,
                             duration = item.optInt("duration", 0),
-                            source = DataSource.BLACKBIRD
+                            source = DataSource.BLACKBIRD,
+                            startTimeMs = item.optLong("startTime", 0)
                         )
                     )
                     if (result.size >= limit) break

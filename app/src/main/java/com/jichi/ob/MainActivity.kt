@@ -45,6 +45,7 @@ import com.jichi.ob.api.GarminApi
 import com.jichi.ob.api.GarminOAuthHelper
 import com.jichi.ob.api.GiantApi
 import com.jichi.ob.api.JoyRunApi
+import com.jichi.ob.api.CyCityApi
 import com.jichi.ob.api.WahooApi
 import com.jichi.ob.api.WahooOAuth2Service
 import com.jichi.ob.api.IgpsportApi
@@ -115,6 +116,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var suuntoApi: SuuntoApi
     private lateinit var giantApi: GiantApi
     private lateinit var joyRunApi: JoyRunApi
+    // v9.1.2: CyCity 纯API登录（仅下载源）
+    private lateinit var cycityApi: CyCityApi
     private var lastZeppLoginAttempt = 0L
     private lateinit var corosApi: CorosApi
     private lateinit var wahooApi: WahooApi
@@ -295,10 +298,18 @@ class MainActivity : AppCompatActivity() {
             suuntoApi = SuuntoApi()
             giantApi = GiantApi()
             joyRunApi = JoyRunApi()
+            cycityApi = CyCityApi()
             CodoonApi.gcjConvertEnabled = prefs.isCodoonGcjConvertEnabled()
             ZeppApi.gcjConvertEnabled = prefs.isZeppGcjConvertEnabled()
             corosApi = CorosApi()
             wahooApi = WahooApi()
+            // v8.6.6: 从prefs恢复已保存的登录凭据，支持App重启后自动重登
+            keepApi.restoreCredentials(prefs.getKeepAccount(), prefs.getKeepPassword())
+            mywhooshApi.restoreCredentials(prefs.getMywhooshAccount(), prefs.getMywhooshPassword())
+            zwiftApi.restoreCredentials(prefs.getZwiftAccount(), prefs.getZwiftPassword())
+            codoonApi.restoreCredentials(prefs.getCodoonAccount(), prefs.getCodoonPassword())
+            zeppApi.restoreCredentials(prefs.getZeppAccount(), prefs.getZeppPassword())
+            komootApi.restoreCredentials(prefs.getKomootAccount(), prefs.getKomootPassword())
             uploadEngine = UploadEngine(this)
             if (!SAVE_DIR.exists()) SAVE_DIR.mkdirs()
             migrateLegacyStorageDir()
@@ -329,6 +340,8 @@ class MainActivity : AppCompatActivity() {
     internal fun openPlatformLogin(ds: DataSource) {
         when (ds) {
             DataSource.IGPSPORT -> openLogin(LoginWebActivity.TYPE_IGPSPORT, com.jichi.ob.api.IgpsportApi.LOGIN_URL)
+            // v8.8.6: iGPSPORT 国际区——移动API账号密码直接登录（无网页登录态可抓）
+            DataSource.IGPSPORT_INT -> openIgpsportIntLogin()
             DataSource.XINGZHE -> openLogin(LoginWebActivity.TYPE_XINGZHE, com.jichi.ob.api.XingzheApi.LOGIN_URL)
             DataSource.MAGENE -> openLogin(LoginWebActivity.TYPE_MAGENE, com.jichi.ob.api.MageneApi.LOGIN_URL)
             DataSource.BLACKBIRD -> openLogin(LoginWebActivity.TYPE_BLACKBIRD, com.jichi.ob.api.BlackbirdApi.LOGIN_URL)
@@ -349,6 +362,7 @@ class MainActivity : AppCompatActivity() {
             DataSource.GIANT -> openGiantLogin()
             DataSource.TWO_BULU -> openLogin(LoginWebActivity.TYPE_TWO_BULU, "https://www.2bulu.com/")
             DataSource.JOYRUN -> openJoyRunLogin()
+            DataSource.CYCITY -> openCyCityLogin()
             else -> {}  // v8.4.4: 实验室平台（Strava/Polar/Fitbit/Withings/TrainingPeaks）正式版不提供登录入口
         }
     }
@@ -517,7 +531,9 @@ class MainActivity : AppCompatActivity() {
                             prefs.saveMywhooshToken(result.token)
                             prefs.saveMywhooshWhooshId(result.whooshId)
                             prefs.saveMywhooshRefreshToken(result.refreshToken)
-                            appendLog("✅ MyWhoosh登录成功")
+                            // v8.6.6: 记住密码——token 过期自动重登
+                            prefs.saveMywhooshPassword(password)
+                            appendLog("✅ MyWhoosh登录成功（已记住账号，过期自动重登）")
                             fetchUsernameAfterLogin(DataSource.MYWHOOSH)
                         } else {
                             appendLog("❌ MyWhoosh登录失败：账号或密码错误，请重新输入")
@@ -569,6 +585,8 @@ class MainActivity : AppCompatActivity() {
                         if (result != null) {
                             prefs.saveZwiftToken(result.token)
                             prefs.saveZwiftRefreshToken(result.refreshToken)
+                            // v8.6.6: 记住密码——token 过期自动重登
+                            prefs.saveZwiftPassword(password)
                             // 解析 playerId 供活动列表使用
                             lifecycleScope.launch(Dispatchers.IO) {
                                 val pid = zwiftApi.getProfileId(result.token)
@@ -584,6 +602,55 @@ class MainActivity : AppCompatActivity() {
                             appendLog("❌ Zwift登录失败：账号或密码错误，请重新输入")
                             loginFragment.updateStatus()
                             try { settingsFragment?.refreshLoginState() } catch (_: Exception) {}
+                        }
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /**
+     * v8.8.6: iGPSPORT 国际区直接登录——移动 API 账号密码（prod.en.igpsport.com，无网页登录态可抓）
+     */
+    internal fun openIgpsportIntLogin() {
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 24)
+        }
+        val accountInput = android.widget.EditText(this).apply {
+            hint = "iGPSPORT 国际区账号（邮箱）"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+        }
+        val passwordInput = android.widget.EditText(this).apply {
+            hint = "密码"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
+        }
+        layout.addView(accountInput)
+        layout.addView(passwordInput)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("登录 iGPSPORT 国际区")
+            .setMessage("账号密码直接登录国际区（app.igpsport.com 国际账号），作为数据源（仅下载）")
+            .setView(layout)
+            .setPositiveButton("登录") { _, _ ->
+                val account = accountInput.text.toString().trim()
+                val password = passwordInput.text.toString()
+                if (account.isEmpty() || password.isEmpty()) {
+                    appendLog("⚠️ 请输入 iGPSPORT 国际区账号和密码")
+                    return@setPositiveButton
+                }
+                appendLog("🔐 iGPSPORT国际区直接登录中...")
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val token = igpsportApi.loginInternational(account, password)
+                    runOnUiThread {
+                        if (token != null) {
+                            prefs.saveIgpsportIntToken(token)
+                            appendLog("✅ iGPSPORT国际区登录成功")
+                            fetchUsernameAfterLogin(DataSource.IGPSPORT_INT)
+                        } else {
+                            appendLog("❌ iGPSPORT国际区登录失败：账号密码错误或风控，请重试")
                         }
                     }
                 }
@@ -629,7 +696,9 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         if (result != null) {
                             prefs.saveKeepToken(result.token)
-                            appendLog("✅ Keep登录成功")
+                            // v8.6.6: 记住密码——token 过期自动重登
+                            prefs.saveKeepPassword(password)
+                            appendLog("✅ Keep登录成功（已记住账号，过期自动重登）")
                             fetchUsernameAfterLogin(DataSource.KEEP)
                         } else {
                             appendLog("❌ Keep登录失败：账号或密码错误，请重新输入")
@@ -741,7 +810,9 @@ class MainActivity : AppCompatActivity() {
                         if (result != null && result.appToken.isNotBlank()) {
                             prefs.saveZeppToken(result.appToken)
                             prefs.saveZeppUserId(result.userId)
-                            appendLog("✅ Zepp登录成功")
+                            // v8.6.6: 记住密码——token 过期自动重登
+                            prefs.saveZeppPassword(password)
+                            appendLog("✅ Zepp登录成功（已记住账号，过期自动重登）")
                             fetchUsernameAfterLogin(DataSource.ZEPP)
                         } else {
                             appendLog("❌ Zepp登录失败：${result?.error ?: "账号或密码错误，请重新输入"}")
@@ -793,7 +864,9 @@ class MainActivity : AppCompatActivity() {
                         if (result != null) {
                             prefs.saveKomootToken(result.token)
                             prefs.saveUsername(DataSource.KOMOT, result.username)
-                            appendLog("✅ Komoot登录成功")
+                            // v8.6.6: 记住密码——token 过期自动重登
+                            prefs.saveKomootPassword(password)
+                            appendLog("✅ Komoot登录成功（已记住账号，过期自动重登）")
                             fetchUsernameAfterLogin(DataSource.KOMOT)
                         } else {
                             appendLog("❌ Komoot登录失败：邮箱或密码错误，请重新输入")
@@ -928,7 +1001,8 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread {
                             prefs.saveGarminCnToken(cred)
                             prefs.saveGarminCnCookie("")
-                            appendLog("✅ 佳明中国登录成功(mobile SSO+DI Token)")
+                            prefs.saveGarminCnCredentials(email, password)
+                            appendLog("✅ 佳明中国登录成功（已记住账号，过期自动重登）")
                             com.jichi.ob.util.GarminLoginHint.show(this@MainActivity, "佳明中国")
                             fetchUsernameAfterLogin(DataSource.GARMIN_CN)
                             loginFragment.updateStatus()
@@ -1148,6 +1222,58 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
+    /** v9.1.2: CyCity 直接登录——手机号+密码原生表单直调 CyCityApi（纯API，仅下载源，对齐开发版 v8.9.1） */
+    internal fun openCyCityLogin() {
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 24)
+        }
+        val accountInput = android.widget.EditText(this).apply {
+            hint = "CyCity手机号"
+            inputType = android.text.InputType.TYPE_CLASS_PHONE
+            setText(prefs.getCyCityAccount() ?: "")
+        }
+        val passwordInput = android.widget.EditText(this).apply {
+            hint = "CyCity密码"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
+        }
+        layout.addView(accountInput)
+        layout.addView(passwordInput)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("登录 CyCity")
+            .setMessage("手机号+密码直接登录，CyCity作为数据源（下载运动记录）；数据统一上传到Outbase")
+            .setView(layout)
+            .setPositiveButton("登录") { _, _ ->
+                val phone = accountInput.text.toString().trim()
+                val password = passwordInput.text.toString()
+                if (phone.isEmpty() || password.isEmpty()) {
+                    appendLog("⚠️ 请输入CyCity手机号和密码")
+                    return@setPositiveButton
+                }
+                prefs.saveCyCityAccount(phone)
+                appendLog("🔐 CyCity登录中...")
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val result = cycityApi.login(phone, password)
+                    runOnUiThread {
+                        if (result != null) {
+                            prefs.saveCyCityToken(result.token)
+                            prefs.saveUsername(DataSource.CYCITY, result.nickname)
+                            appendLog("✅ CyCity登录成功")
+                            fetchUsernameAfterLogin(DataSource.CYCITY)
+                        } else {
+                            appendLog("❌ CyCity登录失败：账号或密码错误，请重新输入")
+                        }
+                        loginFragment.updateStatus()
+                        try { settingsFragment?.refreshLoginState() } catch (_: Exception) {}
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
     /** v7.2.0: Wahoo配置对话框（保留，用于用户自配置凭证） */
     private fun openWahooConfigDialog() {
         val savedId = prefs.getWahooClientId() ?: ""
@@ -1279,7 +1405,7 @@ class MainActivity : AppCompatActivity() {
             var refreshed = 0
             var invalid = 0
             val platforms = listOf(
-                DataSource.IGPSPORT, DataSource.XINGZHE, DataSource.MAGENE, DataSource.BLACKBIRD,
+                DataSource.IGPSPORT, DataSource.IGPSPORT_INT, DataSource.XINGZHE, DataSource.MAGENE, DataSource.BLACKBIRD,
                 DataSource.BRYTON, DataSource.OUTBASE, DataSource.GARMIN_COM, DataSource.GARMIN_CN,
                 DataSource.COROS_CN, DataSource.COROS_INT, DataSource.WAHOO, DataSource.MYWHOOSH, DataSource.ZWIFT, DataSource.KEEP,
                 DataSource.CODOON, DataSource.ZEPP, DataSource.KOMOT, DataSource.SUUNTO,
@@ -1292,6 +1418,7 @@ class MainActivity : AppCompatActivity() {
                 val username = try {
                     when (ds) {
                         DataSource.IGPSPORT -> igpsportApi.getUsername(cred)
+                        DataSource.IGPSPORT_INT -> igpsportApi.getUsernameInternational(cred)
                         DataSource.XINGZHE -> xingzheApi.getUsername(cred)
                         DataSource.MAGENE -> mageneApi.getUsername(cred)
                         DataSource.BLACKBIRD -> blackbirdApi.getUsername(cred)
@@ -1369,10 +1496,13 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     invalid++
                     lastInvalidPlatforms.add(ds)
-                    if (ds == DataSource.WAHOO || ds == DataSource.COROS_CN || ds == DataSource.COROS_INT) {
+                    if (ds == DataSource.WAHOO || ds == DataSource.COROS_CN || ds == DataSource.COROS_INT
+                        || ds == DataSource.GARMIN_COM || ds == DataSource.GARMIN_CN) {
                         // v7.6.8: Wahoo/高驰失效时【绝不】清除凭证！
                         // Wahoo: token/refresh_token有复用价值，清除会导致重登走完整OAuth新建token触发10枚上限
                         // 高驰: 凭证含regionId/cookie，保留后重登时WebView可复用cookie自动登录，无需重新选区域输账号
+                        // v8.6.6: 佳明DI凭证含refresh_token，失效时同样保留——同步前会ensureValidToken静默刷新，
+                        //         若refresh_token也失效，重登时WebView可复用cookie自动登录，无需重输账号密码
                         runOnUiThread { appendLog("❌ ${ds.displayName} 登录失效，请重新登录（已保留令牌，重登时自动复用/刷新，不会新建令牌）") }
                     } else {
                         prefs.clearCredential(ds)
@@ -1420,8 +1550,64 @@ class MainActivity : AppCompatActivity() {
         DataSource.GARMIN_COM, DataSource.GARMIN_CN -> {
             try { garminApi.ensureValidToken(ds, cred) } catch (e: Exception) { null }
         }
-        DataSource.CODOON -> null  // 咕咚无 refresh 端点，需重新登录
-        DataSource.ZEPP -> null  // Zepp 无 refresh 端点，需重新登录
+        // v8.6.6: 6平台自动重登——Keep/咕咚/MyWhoosh/Zwift/Zepp/Komoot 记住账号密码，token过期自动重登
+        DataSource.KEEP -> {
+            try {
+                val fresh = keepApi.reLoginIfNeeded()
+                if (fresh != null) {
+                    prefs.saveKeepToken(fresh.token)
+                    fresh.token
+                } else null
+            } catch (e: Exception) { Log.w(TAG, "Keep自动重登异常: ${e.message}"); null }
+        }
+        DataSource.CODOON -> {
+            // v8.1.1: 咕咚无 refresh 端点，token 失效后用保存的账号密码自动重登（否则"登录状态记不住"）
+            val account = prefs.getCodoonAccount()
+            val password = prefs.getCodoonPassword()
+            if (account.isNullOrEmpty() || password.isNullOrEmpty()) null
+            else try {
+                val r = codoonApi.login(account, password)
+                if (r != null) {
+                    prefs.saveCodoonToken(r.token)
+                    prefs.saveCodoonUserId(r.userId)
+                    r.token
+                } else null
+            } catch (e: Exception) { Log.w(TAG, "咕咚自动重登异常: ${e.message}"); null }
+        }
+        DataSource.MYWHOOSH -> {
+            try {
+                val fresh = mywhooshApi.reLoginIfNeeded()
+                if (fresh != null) {
+                    prefs.saveMywhooshToken(fresh.token)
+                    prefs.saveMywhooshWhooshId(fresh.whooshId)
+                    prefs.saveMywhooshRefreshToken(fresh.refreshToken)
+                    fresh.token
+                } else null
+            } catch (e: Exception) { Log.w(TAG, "MyWhoosh自动重登异常: ${e.message}"); null }
+        }
+        DataSource.ZWIFT -> {
+            // v8.6.6: Zwift refresh_token 轮换刷新（无需账号密码重登）
+            val refresh = prefs.getZwiftRefreshToken()
+            if (refresh.isNullOrEmpty()) null
+            else {
+                val fresh = zwiftApi.refreshToken(refresh)
+                if (fresh != null) {
+                    prefs.saveZwiftToken(fresh.first)
+                    prefs.saveZwiftRefreshToken(fresh.second)
+                    fresh.first
+                } else null
+            }
+        }
+        DataSource.ZEPP -> {
+            try {
+                val fresh = zeppApi.reLoginIfNeeded()
+                if (fresh != null) {
+                    prefs.saveZeppToken(fresh.appToken)
+                    prefs.saveZeppUserId(fresh.userId)
+                    fresh.appToken
+                } else null
+            } catch (e: Exception) { Log.w(TAG, "Zepp自动重登异常: ${e.message}"); null }
+        }
         DataSource.KOMOT -> {
             // v8.3.8: Komoot token 为长期令牌，失效时尝试自动重登
             try {
@@ -1459,6 +1645,7 @@ class MainActivity : AppCompatActivity() {
             val cred = prefs.getCredential(ds) ?: return@launch
             val name = when (ds) {
                 DataSource.IGPSPORT -> igpsportApi.getUsername(cred)
+                DataSource.IGPSPORT_INT -> igpsportApi.getUsernameInternational(cred)
                 DataSource.XINGZHE -> xingzheApi.getUsername(cred)
                 DataSource.MAGENE -> mageneApi.getUsername(cred)
                 DataSource.BLACKBIRD -> blackbirdApi.getUsername(cred)
@@ -1486,6 +1673,7 @@ class MainActivity : AppCompatActivity() {
                 DataSource.GIANT -> giantApi.getUsername(cred)
                 DataSource.TWO_BULU -> null
                 DataSource.JOYRUN -> null
+                DataSource.CYCITY -> cycityApi.getUsername(cred)
                 else -> null
             }
             if (name != null) {
@@ -1616,7 +1804,11 @@ class MainActivity : AppCompatActivity() {
             val logs = GarminApi.debugLogs
             synchronized(logs) {
                 if (logs.isNotEmpty()) {
-                    for (line in logs) { syncFragment.appendLog(line) }
+                    // v8.6.8: 修复跨线程操作 TextView 导致白屏——IO 协程里直接 appendLog 与主线程绘制竞争
+                    val batch = logs.joinToString("\n")
+                    runOnUiThread {
+                        try { syncFragment.appendLogBatch(batch) } catch (_: Exception) {}
+                    }
                     logs.clear()
                 }
             }
@@ -1753,6 +1945,10 @@ class MainActivity : AppCompatActivity() {
                     val tCost = System.currentTimeMillis() - t0
                     if (result.success) { success++; prefs.addSyncedId(syncKey); statMap.getOrPut(source.shortName){IntArray(3)}[0]++; appendLog("✅ 上传成功(${tCost}ms): ${result.message}") }
                     else if (result.skipped) { skipped++; prefs.addSyncedId(syncKey); statMap.getOrPut(source.shortName){IntArray(3)}[1]++; appendLog("⏭️ 已存在跳过: ${result.message}") }
+                    else if (result.pending) {
+                        // v8.6.5: 已上传但目标端"待处理/未确认入库"——不写已同步记忆，下次同步重试
+                        skipped++; statMap.getOrPut(source.shortName){IntArray(3)}[1]++; appendLog("🕐 已上传待确认(${tCost}ms): ${result.message}")
+                    }
                     else { failed++; statMap.getOrPut(source.shortName){IntArray(3)}[2]++; appendLog("❌ 上传失败(${tCost}ms): ${result.message}") }
                     withContext(Dispatchers.Main) { syncFragment.setProgress(idx + 1); settingsFragment.setSyncedCount(prefs.getSyncedCount()) }
                     delay(150) // v6.2.4: 缩短条间间隔，减少多活动同步累计等待
@@ -1895,6 +2091,11 @@ class MainActivity : AppCompatActivity() {
                             val k = "${source.shortName}_${act.id}_to_${target.shortName}"
                             if (result.success) { ok++; prefs.addSyncedId(k); bump(source.shortName, up = 1); appendLog("✅ 上传成功(${tCost}ms): ${result.message}") }
                             else if (result.skipped) { skipped++; prefs.addSyncedId(k); appendLog("⏭️ 已存在跳过: ${result.message}") }
+                            else if (result.pending) {
+                                // v8.6.5: 已上传但目标端"待处理/未确认入库"（如Outbase异步解析）——不写已同步记忆，
+                                // 下次自动/手动同步重试；不按失败计，避免假成功+假失败双重误导。
+                                skipped++; appendLog("🕐 已上传待确认(${tCost}ms): ${result.message}")
+                            }
                             else { failed++; bump(source.shortName, fail = 1); appendLog("❌ 上传失败(${tCost}ms): ${result.message}") }
                         }
                         delay(150)
@@ -2069,6 +2270,7 @@ class MainActivity : AppCompatActivity() {
         }
         return when (source) {
             DataSource.IGPSPORT -> igpsportApi.getActivities(cred, skip, limit)
+            DataSource.IGPSPORT_INT -> igpsportApi.getActivitiesInternational(cred, skip, limit)
             DataSource.XINGZHE -> xingzheApi.getActivities(cred, skip, limit)
             DataSource.MAGENE -> mageneApi.getActivities(cred, skip, limit)
             DataSource.BLACKBIRD -> blackbirdApi.getActivities(cred, skip, limit)
@@ -2080,8 +2282,8 @@ class MainActivity : AppCompatActivity() {
             }
             DataSource.GARMIN_COM -> garminApi.getActivities(source, cred, skip, limit)
             DataSource.GARMIN_CN -> garminApi.getActivities(source, cred, skip, limit)
-            DataSource.COROS_CN -> corosApi.getActivities(cred, skip, limit)
-            DataSource.COROS_INT -> corosApi.getActivities(cred, skip, limit)
+            DataSource.COROS_CN -> corosApi.getActivities(cred, skip, limit, DataSource.COROS_CN)
+            DataSource.COROS_INT -> corosApi.getActivities(cred, skip, limit, DataSource.COROS_INT)
             DataSource.WAHOO -> {
                 // v7.1.3: Wahoo优先用内置生产凭证刷新token，其次用用户配置的凭证
                 var token = cred
@@ -2131,6 +2333,7 @@ class MainActivity : AppCompatActivity() {
                 } catch (_: Exception) { emptyList() }
             }
             DataSource.JOYRUN -> joyRunApi.getActivities(cred, skip, limit)
+            DataSource.CYCITY -> cycityApi.getActivities(cred, skip, limit)
             else -> emptyList()
         }
     }
@@ -2159,6 +2362,7 @@ class MainActivity : AppCompatActivity() {
         val cred = prefs.getCredential(source) ?: return null
         var data = when (source) {
             DataSource.IGPSPORT -> igpsportApi.downloadFitFile(cred, record.id, record.extra)
+            DataSource.IGPSPORT_INT -> igpsportApi.downloadFitInternational(cred, record.id)
             DataSource.XINGZHE -> {
                 // v7.5.2: 行者→iGPSPORT时GPX优先，可能解决8小时时差
                 val preferGpx = (target == DataSource.IGPSPORT)
@@ -2172,15 +2376,19 @@ class MainActivity : AppCompatActivity() {
                     // v8.5.9: 迈金坐标转换拆分为两个通道独立开关
                     // ① 七牛云直链(durl)：绝大多数为 WGS-84，建议关闭（默认关），开启后执行 GCJ-02→WGS-84
                     // ② fit_content 接口：绝大多数为 GCJ-02，建议开启（默认开）
+                    // v8.7.1: 修复严重bug——convertFitCoordinates返回值被丢弃，最后误返回原始GCJ-02数据，
+                    //   导致开关虽开但坐标从不转换、地图仍偏移
                     if (result.fromFitContent) {
                         if (prefs.isMageneFitContentGcj02Convert() && isFit(result.data)) {
-                            appendLog("🔄 迈金fit_content(GCJ-02)坐标转WGS84...")
-                            convertFitCoordinates(result.data)
+                            appendLog("🔄 迈金fit_content(GCJ-02)坐标转WGS84(Kotlin原生)...")
+                            // v9.1.1: 改用Kotlin原生FitGcj02Fixer，替代WebView JS（对齐开发版v8.9.7）。
+                            // magene_fix.js的compressed record offset多了+1，导致遍历错位破坏FIT时间字段。
+                            com.jichi.ob.util.FitGcj02Fixer.fix(result.data) ?: result.data
                         } else result.data
                     } else {
                         if (prefs.isMageneQiniuGcj02Convert() && isFit(result.data)) {
-                            appendLog("🔄 迈金七牛云通道(GCJ-02)坐标转WGS84...")
-                            convertFitCoordinates(result.data)
+                            appendLog("🔄 迈金七牛云通道(GCJ-02)坐标转WGS84(Kotlin原生)...")
+                            com.jichi.ob.util.FitGcj02Fixer.fix(result.data) ?: result.data
                         } else {
                             appendLog("ℹ️ 迈金七牛云直链(WGS84)，无需转换")
                             result.data
@@ -2204,9 +2412,12 @@ class MainActivity : AppCompatActivity() {
                 } else bbData
             }
             DataSource.BRYTON -> {
-                // v6.2.4: 百锐腾官方未开放FIT/GPX下载接口（网页仅展示summary，CDP实测全部下载路径返回SPA HTML），
-                // 从百锐腾下载原始轨迹不可行；仅支持将其他平台数据上传到百锐腾
-                null
+                // v8.8.6: 百锐腾移动端 REST 下载原始 FIT（m3.brytonactive.com）
+                // 网页端 /api/activity/{id}/fit 实测返回 SPA HTML（v6.2.4 结论"官方未开放下载"即源于此）；
+                // 研究开源项目 intervalssync 发现移动端 API 用 Meteor 登录态 + x-api-key 可下载原始 FIT。
+                val tok = prefs.getBrytonToken() ?: return null
+                val uid = prefs.getBrytonUserId() ?: return null
+                brytonApi.downloadFitMobile(uid, tok, record.id)
             }
             DataSource.GARMIN_COM -> garminApi.downloadFit(source, cred, record.id)
             DataSource.GARMIN_CN -> garminApi.downloadFit(source, cred, record.id)
@@ -2269,6 +2480,10 @@ class MainActivity : AppCompatActivity() {
             DataSource.JOYRUN -> {
                 // v8.4.4: 悦跑圈下载轨迹→GPX（id 形如 jr_<fid>）
                 joyRunApi.downloadGpx(cred, record.id.removePrefix("jr_"))
+            }
+            DataSource.CYCITY -> {
+                // v9.1.2: CyCity 下载 FIT（extra=rideId，对齐开发版 v8.9.1）
+                cycityApi.downloadFit(cred, record.extra ?: record.id)
             }
             else -> null
         }

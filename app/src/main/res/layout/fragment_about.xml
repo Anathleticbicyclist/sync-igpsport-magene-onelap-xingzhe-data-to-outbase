@@ -60,7 +60,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="3dp"
-                        android:text="正式版 v8.6.0"
+                        android:text="正式版 v9.2.0"
                         android:textColor="@color/primary"
                         android:textSize="11sp" />
                 </LinearLayout>
@@ -145,9 +145,9 @@
             app:cardElevation="1dp">
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="📋 更新日志" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v8.6.0 · 登录详情弹窗优化：内容可滚动，操作按钮固定底部" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v8.5.9 · 迈金坐标转换开关拆分：七牛云 / fit_content 独立控制" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v8.4.5 · 全量对齐开发版：Keep 上传增强、同步任务详情、登录卡片刷新" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v9.2.0 · 新增时区修正设置（按平台单独设置当天/历史 +8/-8小时，上传Outbase前自动修正，默认不调整，对齐开发版v9.2.2）" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v9.1.2 · 新增数据源 CyCity（手机号+密码纯API登录，下载运动记录上传Outbase，对齐开发版）" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v9.1.1 · 运动类型全量修复（佳明等跑步/游泳/徒步不再被识别成骑行，上传按真实类型转FIT）；迈金时间解析修复（北京时间字符串不再解析为0、文件名不再差8小时）；迈金坐标转换改Kotlin原生（修复WebView转换破坏FIT时间字段）" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

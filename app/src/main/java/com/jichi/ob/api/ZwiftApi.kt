@@ -39,6 +39,9 @@ class ZwiftApi {
             "https://secure.zwift.com"
         )
         private const val UA = "Zwift/115 CFNetwork/758.0.2 Darwin/15.0.0"
+        /* v8.3.3: Zwift 列表接口 limit 上限 50（>50 返回 400 limit.too.large），
+           预拉取/同步引擎传的大批量在此截断，由调用方分页循环继续拉 */
+        private const val MAX_LIST_LIMIT = 50
     }
 
     private val client = OkHttpClient.Builder()
@@ -50,9 +53,28 @@ class ZwiftApi {
 
     data class LoginResult(val token: String, val refreshToken: String, val playerId: String?)
 
+    // v8.6.6: 记住账号密码——token 过期自动重登（App 重启后由 restoreCredentials 恢复）
+    private var lastUsername: String? = null
+    private var lastPassword: String? = null
+
+    /** v8.6.6: 从 prefs 恢复已保存的账号密码（App 重启后支持自动重登） */
+    fun restoreCredentials(username: String?, password: String?) {
+        if (!username.isNullOrEmpty()) lastUsername = username
+        if (!password.isNullOrEmpty()) lastPassword = password
+    }
+
+    /** v8.6.6: 401 时用最近一次登录的账号密码重新登录（内存兜底） */
+    suspend fun reLoginIfNeeded(): LoginResult? = withContext(Dispatchers.IO) {
+        val u = lastUsername ?: return@withContext null
+        val p = lastPassword ?: return@withContext null
+        login(u, p)
+    }
+
     /** 账号密码登录，返回 token+refresh_token+playerId(可能为null需再解析) */
     suspend fun login(username: String, password: String): LoginResult? = withContext(Dispatchers.IO) {
         try {
+            lastUsername = username
+            lastPassword = password
             val body = FormBody.Builder()
                 .add("grant_type", "password")
                 .add("username", username)
@@ -146,7 +168,8 @@ class ZwiftApi {
                 var lastErr: Exception? = null
                 for (base in BASE_HOSTS) {
                     try {
-                        val url = "$base/api/profiles/$pid/activities?start=$skip&limit=$limit"
+                        val useLimit = maxOf(1, minOf(limit, MAX_LIST_LIMIT))
+                        val url = "$base/api/profiles/$pid/activities?start=$skip&limit=$useLimit"
                         val req = Request.Builder()
                             .url(url)
                             .addHeader("Accept", "application/json")
@@ -172,6 +195,7 @@ class ZwiftApi {
         }
 
     private fun parseActivities(body: String, skip: Int, limit: Int): List<ActivityRecord> {
+        val limit2 = maxOf(1, minOf(limit, MAX_LIST_LIMIT))
         val json = try { JSONObject(body) } catch (_: Exception) { null }
         var arr: org.json.JSONArray? = json?.optJSONArray("activities")
         if (arr == null) {
@@ -183,14 +207,18 @@ class ZwiftApi {
         if (arr == null) return emptyList()
         val out = mutableListOf<ActivityRecord>()
         val total = arr.length()
-        var idx = skip
+        // API 返回的数组本身就是从 start 开始偏移过的，此处必须从 0 取，
+        // 若沿用 idx=skip 会在翻页（skip>0）时越界，导致活动被全部丢弃
+        var idx = 0
         var count = 0
-        while (idx < total && count < limit) {
+        while (idx < total && count < limit2) {
             val item = arr.optJSONObject(idx) ?: run { idx++; continue }
             val id = (item.opt("id") ?: item.opt("activityId"))?.toString() ?: run { idx++; continue }
             val bucket = item.optString("fitFileBucket").takeIf { it.isNotBlank() }
             val key = item.optString("fitFileKey").takeIf { it.isNotBlank() }
-            if (bucket == null || key == null) { idx++; continue }
+            // S3 私有化后活动对象通常已不带 fitFileBucket/fitFileKey：
+            // 不再跳过记录，extra 用 "|activityId" 标记，下载时走 API 详情取 fullDataUrl
+            val extra = if (bucket != null && key != null) "$bucket|$key" else "|$id"
             val title = item.optString("name").takeIf { it.isNotBlank() }
                 ?: item.optString("title").takeIf { it.isNotBlank() }
                 ?: "Zwift骑行"
@@ -203,26 +231,92 @@ class ZwiftApi {
                 ?: item.optDouble("distanceInMeters", -1.0).takeIf { it >= 0 }
                 ?: 0.0
             val dur = item.optInt("duration", item.optInt("durationInSeconds", 0))
-            out.add(ActivityRecord(id, title, start, distM / 1000.0, dur, DataSource.ZWIFT, "$bucket|$key"))
+            out.add(ActivityRecord(id, title, start, distM / 1000.0, dur, DataSource.ZWIFT, extra,
+                startTimeMs = com.jichi.ob.util.ActivityCache.parseStartTimeMs(start)))
             idx++; count++
         }
         return out
     }
 
-    /** 下载 FIT：S3 公开 URL 直下，extra 为 "bucket|key" */
-    suspend fun downloadFit(extra: String): ByteArray = withContext(Dispatchers.IO) {
-        try {
-            val parts = extra.split("|")
-            if (parts.size < 2) throw IllegalStateException("Zwift 下载信息缺失")
-            val url = "https://${parts[0]}.s3.amazonaws.com/${parts[1]}"
-            val req = Request.Builder().url(url).build()
-            client.newCall(req).execute().use { resp ->
-                if (resp.code != 200) throw IllegalStateException("Zwift 文件下载失败 HTTP ${resp.code}")
-                resp.body?.bytes() ?: throw IllegalStateException("Zwift 文件为空")
+    /** 下载 FIT（v8.3.1 修复 403）：
+     *  链路1: S3 直链（key 做 URL 编码；key 若为完整 URL 则直用）
+     *  链路2: API 鉴权下载（Bearer token，多端点兜底）——S3 私有化后必须走这里
+     *  extra 为 "bucket|key" 或 "|activityId"（无 S3 直链时）；
+     *  调用方未传 activityId 时从 extra 提取，仍可走链路2 */
+    suspend fun downloadFit(extra: String, token: String? = null, activityId: String? = null): ByteArray =
+        withContext(Dispatchers.IO) {
+            try {
+                val parts = extra.split("|")
+                // —— 链路1: S3 直链 ——
+                if (parts.size >= 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) {
+                    val key = if (parts[1].startsWith("http")) parts[1]
+                    else {
+                        // 不做整体 URL 编码（/ 编码成 %2F 会导致 S3 签名不匹配 403），仅转义必要字符
+                        val k = parts[1].replace(" ", "%20")
+                            .replace("+", "%2B")
+                            .replace("#", "%23")
+                            .replace("?", "%3F")
+                            .replace("&", "%26")
+                            .replace("=", "%3D")
+                            .replace("%", "%25")
+                        "https://${parts[0]}.s3.amazonaws.com/$k"
+                    }
+                    val s3 = runCatching { getBytes(key, null) }.getOrNull()
+                    if (s3 != null) return@withContext s3
+                }
+                // —— 链路2: 详情预检（fitnessData.fullDataUrl 优先；NOT_AVAILABLE=账号无下载权限） ——
+                val aid = activityId?.takeIf { it.isNotBlank() }
+                    ?: if (parts.size >= 2 && parts[0].isBlank()) parts[1].takeIf { it.isNotBlank() } else null
+                if (!token.isNullOrBlank() && !aid.isNullOrBlank()) {
+                    for (base in BASE_HOSTS) {
+                        val det = runCatching {
+                            client.newCall(Request.Builder().url("$base/api/activities/$aid")
+                                .addHeader("Accept", "application/json")
+                                .addHeader("Authorization", "Bearer $token")
+                                .addHeader("User-Agent", UA).build())
+                                .execute().use { resp -> if (resp.code != 200) null else JSONObject(resp.body?.string() ?: "") }
+                        }.getOrNull() ?: continue
+                        val fd = det.optJSONObject("fitnessData")
+                        if (fd != null) {
+                            val status = fd.optString("status")
+                            val fullUrl = fd.optString("fullDataUrl").takeIf { it.isNotBlank() }
+                            if (fullUrl != null) {
+                                val r = runCatching { getBytes(fullUrl, null) }.getOrNull()
+                                if (r != null && r.size > 100) return@withContext r
+                            }
+                            if (status == "NOT_AVAILABLE") {
+                                throw IllegalStateException(
+                                    "Zwift 账号（试用订阅）暂无 FIT 下载权限（fitnessData=NOT_AVAILABLE），" +
+                                    "请升级 Zwift 会员后重试")
+                            }
+                        }
+                        /* 无 fitnessData 字段时走常规鉴权下载端点兜底 */
+                        for (u in listOf(
+                            "$base/api/activities/$aid/fit",
+                            "$base/api/rides/$aid/fit",
+                            "$base/api/activities/$aid/download?format=fit"
+                        )) {
+                            val r = runCatching { getBytes(u, token) }.getOrNull()
+                            if (r != null && r.size > 100) return@withContext r
+                        }
+                    }
+                }
+                throw IllegalStateException("Zwift 文件下载失败（S3 直链与 API 均不可用）")
+            } catch (e: Exception) {
+                Log.e(TAG, "Zwift downloadFit error", e)
+                throw e
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Zwift downloadFit error", e)
-            throw e
         }
+
+    private suspend fun getBytes(url: String, token: String?): ByteArray? = withContext(Dispatchers.IO) {
+        try {
+            val b = Request.Builder().url(url)
+                .addHeader("User-Agent", UA)
+                .addHeader("Accept", "application/octet-stream, application/json")
+            if (token != null) b.addHeader("Authorization", "Bearer $token")
+            client.newCall(b.build()).execute().use { resp ->
+                if (resp.code != 200) null else resp.body?.bytes()?.takeIf { it.isNotEmpty() }
+            }
+        } catch (e: Exception) { null }
     }
 }

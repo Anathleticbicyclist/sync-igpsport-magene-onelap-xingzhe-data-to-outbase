@@ -51,6 +51,14 @@ class PrefsManager(context: Context) {
     fun getIgpsportToken(): String? = prefs.getString("igpsport_token", null)
     fun isIgpsportLoggedIn(): Boolean = !getIgpsportToken().isNullOrEmpty()
 
+    // ===== v8.8.6: iGPSPORT 国际区（prod.en.igpsport.com，移动API账号密码登录）=====
+    fun saveIgpsportIntToken(token: String) {
+        Log.d(TAG, "saveIgpsportIntToken: ${token.length}")
+        prefs.edit().putString("igpsport_int_token", token).apply()
+    }
+    fun getIgpsportIntToken(): String? = prefs.getString("igpsport_int_token", null)
+    fun isIgpsportIntLoggedIn(): Boolean = !getIgpsportIntToken().isNullOrEmpty()
+
     // ===== 行者: sessionid cookie =====
     fun saveXingzheSessionId(sid: String) {
         Log.d(TAG, "saveXingzheSessionId: ${sid.length}")
@@ -122,6 +130,15 @@ class PrefsManager(context: Context) {
     fun saveGarminCnCookie(c: String) { prefs.edit().putString("garmin_cn_cookie", c).apply() }
     fun getGarminCnCookie(): String? = prefs.getString("garmin_cn_cookie", null)
     fun isGarminCnLoggedIn(): Boolean = !getGarminCnToken().isNullOrEmpty()
+    // v8.6.2: 记住佳明中国账号密码，token过期后自动重新登录
+    fun saveGarminCnCredentials(email: String, password: String) {
+        prefs.edit().putString("garmin_cn_email", email).putString("garmin_cn_password", password).apply()
+    }
+    fun getGarminCnEmail(): String? = prefs.getString("garmin_cn_email", null)
+    fun getGarminCnPassword(): String? = prefs.getString("garmin_cn_password", null)
+    fun clearGarminCnCredentials() {
+        prefs.edit().remove("garmin_cn_email").remove("garmin_cn_password").apply()
+    }
 
     // ===== 高驰 中国区(region 2, teamcnapi.coros.com): accessToken + regionId + cookie =====
     fun saveCorosCnToken(t: String) { prefs.edit().putString("coros_cn_token", t).apply() }
@@ -163,6 +180,7 @@ class PrefsManager(context: Context) {
     // ===== 通用：按平台获取凭证 =====
     fun getCredential(ds: DataSource): String? = when (ds) {
         DataSource.IGPSPORT -> getIgpsportToken()
+        DataSource.IGPSPORT_INT -> getIgpsportIntToken()
         DataSource.XINGZHE -> getXingzheSessionId()
         DataSource.MAGENE -> getMageneToken()
         DataSource.BLACKBIRD -> getBlackbirdCookie()
@@ -183,12 +201,14 @@ class PrefsManager(context: Context) {
         DataSource.GIANT -> getGiantToken()
         DataSource.TWO_BULU -> getTwoBuluCookie()
         DataSource.JOYRUN -> getJoyrunToken()
+        DataSource.CYCITY -> getCyCityToken()
         else -> null
     }
     /** v7.5.9: 保存平台凭证（启动登录检测刷新后更新用） */
     fun saveCredential(ds: DataSource, cred: String) {
         when (ds) {
             DataSource.IGPSPORT -> saveIgpsportToken(cred)
+            DataSource.IGPSPORT_INT -> saveIgpsportIntToken(cred)
             DataSource.XINGZHE -> saveXingzheSessionId(cred)
             DataSource.MAGENE -> saveMageneToken(cred)
             DataSource.BLACKBIRD -> saveBlackbirdCookie(cred)
@@ -209,6 +229,7 @@ class PrefsManager(context: Context) {
             DataSource.GIANT -> saveGiantToken(cred)
             DataSource.TWO_BULU -> saveTwoBuluCookie(cred)
             DataSource.JOYRUN -> saveJoyrunToken(cred)
+            DataSource.CYCITY -> saveCyCityToken(cred)
             else -> {}
         }
     }
@@ -217,6 +238,7 @@ class PrefsManager(context: Context) {
         val e = prefs.edit()
         when (ds) {
             DataSource.IGPSPORT -> e.remove("igpsport_token")
+            DataSource.IGPSPORT_INT -> e.remove("igpsport_int_token")
             DataSource.XINGZHE -> e.remove("xingzhe_session_id")
             DataSource.MAGENE -> { e.remove("magene_token"); e.remove("magene_refresh_token") }
             DataSource.BLACKBIRD -> e.remove("blackbird_cookie")
@@ -237,6 +259,7 @@ class PrefsManager(context: Context) {
             DataSource.GIANT -> e.remove("giant_token")
             DataSource.TWO_BULU -> e.remove("twobulu_cookie")
             DataSource.JOYRUN -> e.remove("joyrun_token")
+            DataSource.CYCITY -> e.remove("cycity_token")
             else -> {}
         }
         e.remove("username_${ds.shortName}")
@@ -252,6 +275,9 @@ class PrefsManager(context: Context) {
     fun getMywhooshRefreshToken(): String? = prefs.getString("mywhoosh_refresh", null)
     fun saveMywhooshAccount(a: String) { prefs.edit().putString("mywhoosh_account", a).apply() }
     fun getMywhooshAccount(): String? = prefs.getString("mywhoosh_account", null)
+    // v8.6.6: 记住密码——token 过期自动重登
+    fun saveMywhooshPassword(p: String) { prefs.edit().putString("mywhoosh_password", p).apply() }
+    fun getMywhooshPassword(): String? = prefs.getString("mywhoosh_password", null)
     fun isMywhooshLoggedIn(): Boolean = !getMywhooshToken().isNullOrEmpty()
 
     fun saveZwiftToken(t: String) { prefs.edit().putString("zwift_token", t).apply() }
@@ -262,6 +288,9 @@ class PrefsManager(context: Context) {
     fun getZwiftPlayerId(): String? = prefs.getString("zwift_player_id", null)
     fun saveZwiftAccount(a: String) { prefs.edit().putString("zwift_account", a).apply() }
     fun getZwiftAccount(): String? = prefs.getString("zwift_account", null)
+    // v8.6.6: 记住密码——token 过期自动重登
+    fun saveZwiftPassword(p: String) { prefs.edit().putString("zwift_password", p).apply() }
+    fun getZwiftPassword(): String? = prefs.getString("zwift_password", null)
     fun isZwiftLoggedIn(): Boolean = !getZwiftToken().isNullOrEmpty()
 
     // ===== Keep: 纯API token（v8.2.1 新增，仅下载源）=====
@@ -290,7 +319,19 @@ class PrefsManager(context: Context) {
     fun getKeepToken(): String? = prefs.getString("keep_token", null)
     fun saveKeepAccount(a: String) { prefs.edit().putString("keep_account", a).apply() }
     fun getKeepAccount(): String? = prefs.getString("keep_account", null)
+    // v8.6.6: 记住密码——token 过期自动重登
+    fun saveKeepPassword(p: String) { prefs.edit().putString("keep_password", p).apply() }
+    fun getKeepPassword(): String? = prefs.getString("keep_password", null)
     fun isKeepLoggedIn(): Boolean = !getKeepToken().isNullOrEmpty()
+
+    // ===== CyCity: JWT token（v9.1.2 新增，纯API账号密码登录，仅下载源）=====
+    fun saveCyCityToken(token: String) {
+        prefs.edit().putString("cycity_token", token).apply()
+    }
+    fun getCyCityToken(): String? = prefs.getString("cycity_token", null)
+    fun isCyCityLoggedIn(): Boolean = !getCyCityToken().isNullOrEmpty()
+    fun saveCyCityAccount(account: String) = prefs.edit().putString("cycity_account", account).apply()
+    fun getCyCityAccount(): String? = prefs.getString("cycity_account", null)
 
     // ===== 咕咚 Codoon: 纯API token（v8.3.8 新增，仅下载源）=====
     fun saveCodoonToken(t: String) { prefs.edit().putString("codoon_token", t).apply() }
@@ -310,6 +351,9 @@ class PrefsManager(context: Context) {
     fun getZeppToken(): String? = prefs.getString("zepp_token", null)
     fun saveZeppAccount(a: String) { prefs.edit().putString("zepp_account", a).apply() }
     fun getZeppAccount(): String? = prefs.getString("zepp_account", null)
+    // v8.6.6: 记住密码——token 过期自动重登
+    fun saveZeppPassword(p: String) { prefs.edit().putString("zepp_password", p).apply() }
+    fun getZeppPassword(): String? = prefs.getString("zepp_password", null)
     fun saveZeppUserId(uid: String) { prefs.edit().putString("zepp_user_id", uid).apply() }
     fun getZeppUserId(): String? = prefs.getString("zepp_user_id", null)
     fun isZeppLoggedIn(): Boolean = !getZeppToken().isNullOrEmpty()
@@ -321,6 +365,9 @@ class PrefsManager(context: Context) {
     fun getKomootToken(): String? = prefs.getString("komoot_token", null)
     fun saveKomootAccount(a: String) { prefs.edit().putString("komoot_account", a).apply() }
     fun getKomootAccount(): String? = prefs.getString("komoot_account", null)
+    // v8.6.6: 记住密码——token 过期自动重登
+    fun saveKomootPassword(p: String) { prefs.edit().putString("komoot_password", p).apply() }
+    fun getKomootPassword(): String? = prefs.getString("komoot_password", null)
     fun isKomootLoggedIn(): Boolean = !getKomootToken().isNullOrEmpty()
 
     // ===== Suunto 松拓: OAuth2（v8.3.8 新增，仅下载源；凭证三件套）=====
@@ -338,6 +385,7 @@ class PrefsManager(context: Context) {
 
     fun isLoggedIn(ds: DataSource): Boolean = when (ds) {
         DataSource.IGPSPORT -> isIgpsportLoggedIn()
+        DataSource.IGPSPORT_INT -> isIgpsportIntLoggedIn()
         DataSource.XINGZHE -> isXingzheLoggedIn()
         DataSource.MAGENE -> isMageneLoggedIn()
         DataSource.BLACKBIRD -> isBlackbirdLoggedIn()
@@ -358,6 +406,7 @@ class PrefsManager(context: Context) {
         DataSource.GIANT -> isGiantLoggedIn()
         DataSource.TWO_BULU -> isTwoBuluLoggedIn()
         DataSource.JOYRUN -> isJoyrunLoggedIn()
+        DataSource.CYCITY -> isCyCityLoggedIn()
         else -> false
     }
 

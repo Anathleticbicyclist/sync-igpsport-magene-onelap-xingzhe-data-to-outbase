@@ -12,11 +12,14 @@ data class ActivityRecord(
     val duration: Int,      // seconds
     val source: DataSource,
     var extra: String? = null,  // 平台附加信息
-    var startTimeMs: Long = 0L  // v8.3.8: 平台直传的毫秒时间戳（最准；0 表示需从 startTime 字符串解析）
+    var startTimeMs: Long = 0L,  // v8.3.8: 平台直传的毫秒时间戳（最准；0 表示需从 startTime 字符串解析）
+    var sportType: String? = null  // v9.1.1: 运动类型（running/cycling/hiking/swimming等，上传转FIT时优先用，对齐开发版v9.1.0）
 )
 
 enum class DataSource(val displayName: String, val shortName: String) {
     IGPSPORT("iGPSPORT", "igp"),
+    // v8.8.6: iGPSPORT 国际区（prod.en.igpsport.com，移动API账号密码登录）
+    IGPSPORT_INT("iGPSPORT国际", "igpi"),
     XINGZHE("行者", "xz"),
     MAGENE("迈金", "mg"),
     BLACKBIRD("黑鸟单车", "bb"),
@@ -41,6 +44,8 @@ enum class DataSource(val displayName: String, val shortName: String) {
     SUUNTO("松拓", "su"),
     TWO_BULU("两步路", "2b"),
     JOYRUN("悦跑圈", "jr"),
+    // v9.1.2: CyCity（手机号密码纯API登录，仅下载数据源，对齐开发版 v8.9.1）
+    CYCITY("CyCity", "cyc"),
     // v8.4.4: 实验室平台枚举（仅 LoginWebActivity 登录映射兼容开发版，正式版不提供同步入口）
     STRAVA("Strava", "st"),
     POLAR("Polar", "po"),
@@ -51,7 +56,7 @@ enum class DataSource(val displayName: String, val shortName: String) {
     companion object {
         /** 可作为"来源(下载)"的平台 */
         fun sourcePlatforms(): List<DataSource> =
-            listOf(IGPSPORT, XINGZHE, MAGENE, BLACKBIRD, BRYTON, GARMIN_COM, GARMIN_CN, COROS_CN, COROS_INT, WAHOO, MYWHOOSH, ZWIFT, KEEP, CODOON, ZEPP, KOMOT, SUUNTO, TWO_BULU, JOYRUN)
+            listOf(IGPSPORT, IGPSPORT_INT, XINGZHE, MAGENE, BLACKBIRD, BRYTON, GARMIN_COM, GARMIN_CN, COROS_CN, COROS_INT, WAHOO, MYWHOOSH, ZWIFT, KEEP, CODOON, ZEPP, KOMOT, SUUNTO, TWO_BULU, JOYRUN, CYCITY)
         fun fromShortName(s: String): DataSource? = entries.find { it.shortName == s }
     }
 }
@@ -62,13 +67,14 @@ enum class FileKind(val ext: String, val displayName: String) {
     UNKNOWN("", "未知")
 }
 
-/** v8.0.0 正式版: 可作为"来源(下载)"的平台（百锐腾不支持下载） */
+/** v8.0.0 正式版: 可作为"来源(下载)"的平台（v8.8.6 起百锐腾支持移动端REST下载） */
 enum class DownloadSupport(val available: Boolean, val note: String) {
     IGPSPORT(true, ""),
+    IGPSPORT_INT(true, ""),
     XINGZHE(true, ""),
     MAGENE(true, ""),
     BLACKBIRD(true, ""),
-    BRYTON(false, "开发中，不支持下载"),
+    BRYTON(true, "移动端REST下载（m3）"),
     GARMIN_COM(true, ""),
     GARMIN_CN(true, ""),
     COROS_CN(true, ""),
@@ -87,6 +93,7 @@ enum class DownloadSupport(val available: Boolean, val note: String) {
     companion object {
         fun fromDataSource(ds: DataSource): DownloadSupport = when (ds) {
             DataSource.IGPSPORT -> IGPSPORT
+            DataSource.IGPSPORT_INT -> IGPSPORT_INT
             DataSource.XINGZHE -> XINGZHE
             DataSource.MAGENE -> MAGENE
             DataSource.BLACKBIRD -> BLACKBIRD
@@ -115,6 +122,7 @@ enum class UploadSupport(val available: Boolean, val note: String) {
     OUTBASE(true, ""),
     GIANT(false, "正式版仅支持上传到Outbase"),
     IGPSPORT(false, "正式版仅支持上传到Outbase"),
+    IGPSPORT_INT(false, "正式版仅支持上传到Outbase"),
     XINGZHE(false, "正式版仅支持上传到Outbase"),
     MAGENE(false, "正式版仅支持上传到Outbase"),
     BLACKBIRD(false, "正式版仅支持上传到Outbase"),
@@ -144,6 +152,7 @@ enum class UploadSupport(val available: Boolean, val note: String) {
             DataSource.OUTBASE -> OUTBASE
             DataSource.GIANT -> GIANT
             DataSource.IGPSPORT -> IGPSPORT
+            DataSource.IGPSPORT_INT -> IGPSPORT_INT
             DataSource.XINGZHE -> XINGZHE
             DataSource.MAGENE -> MAGENE
             DataSource.BLACKBIRD -> BLACKBIRD
@@ -162,6 +171,7 @@ enum class UploadSupport(val available: Boolean, val note: String) {
             DataSource.SUUNTO -> SUUNTO
             DataSource.TWO_BULU -> TWO_BULU
             DataSource.JOYRUN -> JOYRUN
+            DataSource.CYCITY -> JOYRUN
             DataSource.STRAVA -> STRAVA
             DataSource.POLAR -> POLAR
             DataSource.FITBIT -> FITBIT

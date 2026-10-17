@@ -359,8 +359,17 @@ class SyncFragment : Fragment() {
 
     private fun flushPendingLogs() {
         if (!tvLogReady) return
-        for (msg in pendingLogs) appendLog(msg)
+        // v8.6.8: 防御——挂起日志无上限时一次性补显会长时间占用主线程导致白屏；只补最近 100 条
+        val snapshot = if (pendingLogs.size > 100) pendingLogs.takeLast(100) else pendingLogs
+        for (msg in snapshot) appendLog(msg)
         pendingLogs.clear()
+    }
+
+    /** v8.6.8: 批量追加日志（MainActivity 防白屏：IO 协程跨线程刷 UI 改为 runOnUiThread + 批量） */
+    fun appendLogBatch(batch: String) {
+        for (line in batch.split('\n')) {
+            if (line.isNotBlank()) appendLog(line)
+        }
     }
 
     /** MainActivity调用：追加日志（v8.1: 按状态着色，状态时间线式展示） */
@@ -369,6 +378,8 @@ class SyncFragment : Fragment() {
         val tv = tvLog
         if (tv == null) {
             pendingLogs.add("[$ts] $message")
+            // v8.6.8: 上限200条防膨胀，避免 Fragment 销毁期间日志无限堆积
+            if (pendingLogs.size > 200) pendingLogs.removeAt(0)
             return
         }
         val cur = tv.text?.toString() ?: ""
