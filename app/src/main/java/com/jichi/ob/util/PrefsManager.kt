@@ -37,6 +37,7 @@ class PrefsManager(context: Context) {
         private const val KEY_CUTOFF_ENABLED = "cutoff_enabled"  // v8.1.0
         private const val KEY_CUTOFF_DATE = "cutoff_date"        // v8.1.0 "yyyy-MM-dd"
         private const val KEY_PERSIST_LOG = "persist_log"
+        private const val KEY_DARK_MODE = "dark_mode"  // v9.4.0 深色模式三态
         private const val MAX_LOG_LINES = 400
     }
 
@@ -503,6 +504,9 @@ class PrefsManager(context: Context) {
     fun setMageneFitContentGcj02Convert(b: Boolean) = prefs.edit().putBoolean(KEY_MAGENE_FITCONTENT_GCJ02, b).apply()
     fun getSaveDir(): String = prefs.getString(KEY_SAVE_DIR, "") ?: ""
     fun setSaveDir(d: String) = prefs.edit().putString(KEY_SAVE_DIR, d).apply()
+    // v9.4.0: 深色模式（0 跟随系统 / 1 浅色 / 2 深色，默认跟随系统，对齐开发版 v9.2.9）
+    fun getDarkMode(): Int = prefs.getInt(KEY_DARK_MODE, 0)
+    fun setDarkMode(mode: Int) = prefs.edit().putInt(KEY_DARK_MODE, mode).apply()
     // v7.6.8: 忽略记忆，强制重传（1对1时用户自选；1对多时强制开启）
     fun isForceRetransmit(): Boolean = prefs.getBoolean(KEY_FORCE_RETRANSMIT, false)
     fun setForceRetransmit(b: Boolean) = prefs.edit().putBoolean(KEY_FORCE_RETRANSMIT, b).apply()

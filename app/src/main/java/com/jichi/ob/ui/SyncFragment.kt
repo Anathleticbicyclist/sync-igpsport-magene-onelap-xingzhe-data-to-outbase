@@ -171,7 +171,7 @@ class SyncFragment : Fragment() {
             elevation = 0f
             strokeWidth = dpTask(1f)
             setStrokeColor(ctx.getColor(if (task.enabled) R.color.primary_light else R.color.divider))
-            setCardBackgroundColor(android.graphics.Color.WHITE)
+            setCardBackgroundColor(ctx.getColor(R.color.card_white))
         }
         val inner = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL

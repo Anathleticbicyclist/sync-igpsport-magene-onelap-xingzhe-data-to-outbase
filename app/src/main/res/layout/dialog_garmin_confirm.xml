@@ -13,7 +13,7 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:text="确认继续登陆"
-        android:textColor="#E65100"
+        android:textColor="@color/accent_orange"
         android:textSize="17sp"
         android:textStyle="bold" />
 
@@ -21,7 +21,7 @@
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:layout_marginTop="10dp"
-        android:background="#E65100" />
+        android:background="@color/accent_orange" />
 
     <TextView
         android:id="@+id/tvGarminConfirmGuide"
@@ -45,7 +45,7 @@
         android:layout_width="match_parent"
         android:layout_height="120dp"
         android:layout_marginTop="4dp"
-        android:background="#1E293B"
+        android:background="@color/text_primary"
         android:padding="10dp">
 
         <TextView
@@ -54,7 +54,7 @@
             android:layout_height="wrap_content"
             android:fontFamily="monospace"
             android:lineSpacingExtra="2dp"
-            android:textColor="#D1D5DB"
+            android:textColor="@color/divider"
             android:textIsSelectable="true"
             android:textSize="10sp" />
     </ScrollView>
@@ -100,7 +100,7 @@
             android:gravity="center"
             android:background="@drawable/bg_check_update"
             android:text="确认"
-            android:textColor="#E65100"
+            android:textColor="@color/accent_orange"
             android:textSize="13sp"
             android:textStyle="bold" />
     </LinearLayout>

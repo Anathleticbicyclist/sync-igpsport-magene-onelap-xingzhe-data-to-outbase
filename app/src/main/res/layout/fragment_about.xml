@@ -30,7 +30,9 @@
                 <ImageView
                     android:layout_width="52dp"
                     android:layout_height="52dp"
-                    android:src="@mipmap/ic_launcher"
+                    android:src="@drawable/ic_about_logo"
+                    android:background="@drawable/bg_about_logo_circle"
+                    android:clipToOutline="true"
                     android:contentDescription="logo" />
 
                 <LinearLayout
@@ -60,7 +62,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="3dp"
-                        android:text="正式版 v9.2.0"
+                        android:text="正式版 v9.4.0"
                         android:textColor="@color/primary"
                         android:textSize="11sp" />
                 </LinearLayout>
@@ -96,7 +98,7 @@
             android:foreground="?android:attr/selectableItemBackground"
             app:cardCornerRadius="16dp"
             app:cardElevation="0dp"
-            app:cardBackgroundColor="#EAF4FF"
+            app:cardBackgroundColor="@color/primary_light"
             app:strokeColor="@color/primary"
             app:strokeWidth="1dp">
             <LinearLayout
@@ -128,7 +130,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
             android:padding="10dp"
-            android:background="#FFFFFF" android:layout_marginStart="4dp" android:layout_marginEnd="4dp"
+            android:background="@color/card_white" android:layout_marginStart="4dp" android:layout_marginEnd="4dp"
             android:gravity="center"
             android:text="本项目完全开源免费，如觉得项目对你有帮助，可赞赏支持作者后续功能迭代与问题修复。"
             android:textColor="@color/text_primary"
@@ -145,9 +147,9 @@
             app:cardElevation="1dp">
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="📋 更新日志" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v9.4.0 · 新增深色模式三态开关（跟随系统/浅色/深色，全页面夜间适配）；UI 视觉精修（配色/圆角/间距统一，对齐开发版）" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v9.2.0 · 新增时区修正设置（按平台单独设置当天/历史 +8/-8小时，上传Outbase前自动修正，默认不调整，对齐开发版v9.2.2）" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v9.1.2 · 新增数据源 CyCity（手机号+密码纯API登录，下载运动记录上传Outbase，对齐开发版）" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v9.1.1 · 运动类型全量修复（佳明等跑步/游泳/徒步不再被识别成骑行，上传按真实类型转FIT）；迈金时间解析修复（北京时间字符串不再解析为0、文件名不再差8小时）；迈金坐标转换改Kotlin原生（修复WebView转换破坏FIT时间字段）" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
@@ -158,7 +160,7 @@
             app:cardCornerRadius="14dp" app:cardElevation="1dp">
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="6dp">
                 <TextView android:id="@+id/tvClubLink" android:layout_width="match_parent" android:layout_height="44dp" android:gravity="center_vertical" android:text="👥 迈向Ob同步工具：开发者俱乐部" android:textColor="@color/text_primary" android:textSize="12sp" android:paddingStart="8dp" android:paddingEnd="8dp" />
-                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#EEF1F5" />
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/bg_line" />
                 <TextView android:id="@+id/tvUpdateLink" android:layout_width="match_parent" android:layout_height="44dp" android:gravity="center_vertical" android:text="🌐 更新地址：迈向Ob 正式版 · Github项目" android:textColor="@color/text_primary" android:textSize="12sp" android:paddingStart="8dp" android:paddingEnd="8dp" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>

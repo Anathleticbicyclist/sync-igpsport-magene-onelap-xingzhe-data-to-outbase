@@ -167,7 +167,7 @@ class CreateTaskFragment : Fragment() {
                 when {
                     !selectable -> requireContext().getColor(R.color.bg_light)
                     isSelected -> requireContext().getColor(R.color.primary_light)
-                    else -> android.graphics.Color.WHITE
+                    else -> requireContext().getColor(R.color.card_white)
                 }
             )
             isClickable = selectable

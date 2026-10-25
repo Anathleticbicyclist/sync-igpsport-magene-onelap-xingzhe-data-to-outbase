@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v9.4.0: 关于页 Logo 圆形渐变底（对齐开发版 v7.7.7，命名色深浅自适应） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <gradient
+        android:startColor="@color/gradient_start"
+        android:endColor="@color/gradient_end"
+        android:angle="315" />
+</shape>

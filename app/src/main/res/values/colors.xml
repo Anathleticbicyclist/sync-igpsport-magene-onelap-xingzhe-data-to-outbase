@@ -5,15 +5,21 @@
     <color name="primary">#2E96FF</color>           <!-- 主色：清新淡蓝 -->
     <color name="primary_dark">#1B7CE0</color>
     <color name="primary_soft">#EAF4FF</color>      <!-- 主色浅底 -->
+    <color name="gradient_start">#8CC5FF</color>    <!-- v9.2.8 强调渐变起始：浅蓝（对齐开发版） -->
+    <color name="gradient_end">#2E96FF</color>      <!-- 强调渐变结束：正式版主色 -->
     <color name="splash_start">#EAF4FF</color>      <!-- 开屏渐变起始：淡蓝 -->
     <color name="splash_mid">#7FB4FF</color>        <!-- 开屏渐变中间 -->
     <color name="splash_end">#2E96FF</color>        <!-- 开屏渐变结束：清新蓝 -->
     <color name="card_white">#FFFFFF</color>        <!-- 卡片白 -->
-    <color name="divider">#ECF1F7</color>           <!-- 细分割线 -->
+    <color name="divider">#E8EEF4</color>           <!-- 细分割线（v9.2.8 对齐开发版） -->
     <color name="primary_light">#EAF4FF</color>     <!-- v8.4.0 主色浅底（选中态，对齐开发版） -->
+    <color name="log_success">#2E9E5B</color>       <!-- v9.2.8 成功：绿（对齐开发版） -->
     <color name="log_error">#E5484D</color>         <!-- v8.4.0 失败：红 -->
+    <color name="log_skip">#9CA3AF</color>          <!-- v9.2.8 跳过：灰（对齐开发版） -->
     <color name="log_info">#2B8CFF</color>          <!-- v8.4.0 信息/传输：天蓝 -->
     <color name="log_warn">#E8A33D</color>          <!-- v8.4.0 警告：橙 -->
+    <color name="log_normal">#4B5563</color>        <!-- v9.2.8 普通：中灰（对齐开发版） -->
+    <color name="log_time">#B6C2D0</color>          <!-- v9.2.8 时间戳：浅灰（对齐开发版） -->
     <color name="text_primary">#17181A</color>
     <color name="text_secondary">#8A919C</color>
     <color name="text_tertiary">#B4BAC4</color>
@@ -60,4 +66,12 @@
     <color name="black">#000000</color>
     <color name="green">#2FBD71</color>
     <color name="red">#F0443A</color>
+
+    <!-- v9.4.0 深色模式资源化：布局硬编码色转命名色 -->
+    <color name="accent_orange">#E65100</color>     <!-- 重点橙（登录Web输入框等） -->
+    <color name="stroke_light">#E3EEFA</color>      <!-- 浅蓝描边（输入框/卡片） -->
+    <color name="stroke_chip">#C9DFF7</color>       <!-- 胶囊描边 -->
+    <color name="text_mid">#666666</color>         <!-- 中灰文字 -->
+    <color name="text_light">#999999</color>       <!-- 浅灰文字 -->
+    <color name="text_deep">#333333</color>        <!-- 深灰文字 -->
 </resources>

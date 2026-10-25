@@ -85,6 +85,45 @@ class SyncSettingsFragment : Fragment() {
         view.findViewById<TextView>(R.id.btnTimeZoneEntry)?.setOnClickListener {
             startActivity(Intent(requireContext(), TimeZoneSettingsActivity::class.java))
         }
+
+        // v9.4.0: 深色模式三态开关（跟随系统/浅色/深色，对齐开发版v9.2.9）
+        setupDarkModeButtons(view)
+    }
+
+    /**
+     * v9.4.0: 深色模式三态开关。点击后保存设置并立即应用（AppCompatDelegate + recreate）。
+     */
+    private fun setupDarkModeButtons(view: View) {
+        val buttons = listOf(
+            R.id.btnDarkFollow to 0,
+            R.id.btnDarkLight to 1,
+            R.id.btnDarkDark to 2
+        )
+        fun refresh() {
+            val cur = prefs.getDarkMode()
+            for ((id, mode) in buttons) {
+                val btn = view.findViewById<TextView>(id) ?: continue
+                val selected = mode == cur
+                btn.setBackgroundResource(if (selected) R.drawable.bg_dark_chip_sel else R.drawable.bg_dark_chip_unsel)
+                btn.setTextColor(
+                    resources.getColor(if (selected) R.color.primary_dark else R.color.text_secondary)
+                )
+            }
+        }
+        for ((id, mode) in buttons) {
+            view.findViewById<TextView>(id)?.setOnClickListener {
+                prefs.setDarkMode(mode)
+                androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
+                    when (mode) {
+                        1 -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+                        2 -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+                        else -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+                    }
+                )
+                requireActivity().recreate()
+            }
+        }
+        refresh()
     }
 
     /**

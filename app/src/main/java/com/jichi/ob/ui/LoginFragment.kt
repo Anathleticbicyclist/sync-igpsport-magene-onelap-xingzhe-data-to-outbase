@@ -220,8 +220,8 @@ class LoginFragment : Fragment() {
             radius = dp(14f)
             elevation = 0f
             strokeWidth = dp(1f).toInt()
-            setStrokeColor(if (isInvalid) android.graphics.Color.parseColor("#F5C2C4") else android.graphics.Color.parseColor("#E3EEFA"))
-            setCardBackgroundColor(if (isInvalid) android.graphics.Color.parseColor("#FFF8F8") else android.graphics.Color.WHITE)
+            setStrokeColor(if (isInvalid) ctx.getColor(R.color.err_red) else ctx.getColor(R.color.stroke_light))
+            setCardBackgroundColor(if (isInvalid) ctx.getColor(R.color.err_soft) else ctx.getColor(R.color.card_white))
             setOnClickListener { showDetail(ds) }
         }
         val inner = LinearLayout(ctx).apply {
@@ -250,7 +250,7 @@ class LoginFragment : Fragment() {
                 setPadding(dp(6f).toInt(), dp(1f).toInt(), dp(6f).toInt(), dp(1f).toInt())
                 background = android.graphics.drawable.GradientDrawable().apply {
                     cornerRadius = dp(8f)
-                    setColor(android.graphics.Color.parseColor("#2B8CFF"))
+                    setColor(ctx.getColor(R.color.primary))
                 }
                 visibility = View.GONE
             }

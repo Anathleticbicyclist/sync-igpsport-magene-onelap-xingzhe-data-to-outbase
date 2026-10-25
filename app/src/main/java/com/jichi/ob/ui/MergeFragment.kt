@@ -889,12 +889,12 @@ class MergeFragment : Fragment() {
         private fun itemBg(selected: Boolean, isAnchor: Boolean = false): GradientDrawable {
             val g = GradientDrawable().apply {
                 cornerRadius = 14 * dp
-                setColor(if (selected || isAnchor) 0xFFEAF4FF.toInt() else Color.WHITE)
+                setColor(if (selected || isAnchor) color(R.color.primary_light) else color(R.color.card_white))
             }
             when {
-                isAnchor -> g.setStroke((2 * dp).toInt(), 0xFFFC4C02.toInt())
+                isAnchor -> g.setStroke((2 * dp).toInt(), color(R.color.accent_orange))
                 selected -> g.setStroke((2 * dp).toInt(), platformColor(source?.shortName ?: ""))
-                else -> g.setStroke((1 * dp).toInt(), 0xFFE8EEF4.toInt())
+                else -> g.setStroke((1 * dp).toInt(), color(R.color.divider))
             }
             return g
         }

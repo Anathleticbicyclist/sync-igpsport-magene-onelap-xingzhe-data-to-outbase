@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ===== v9.4.0 深色模式（对齐开发版 v9.2.9 方向，基于正式版色系）===== -->
+    <!-- 页面背景与卡片 -->
+    <color name="bg_light">#12161C</color>          <!-- 页面背景：深蓝黑 -->
+    <color name="card_white">#1B2129</color>        <!-- 卡片：深灰蓝 -->
+    <color name="bg_line">#242C36</color>           <!-- 分隔线 -->
+    <color name="bg_card_sub">#242C36</color>       <!-- 次级按钮/浅底 -->
+    <color name="divider">#2A323D</color>           <!-- 细分割线 -->
+    <color name="grey_light">#242C36</color>
+
+    <!-- 主色系（深底亮化） -->
+    <color name="primary">#4DABFF</color>           <!-- 主色：亮蓝 -->
+    <color name="primary_dark">#3D8BE0</color>
+    <color name="primary_soft">#1E3A5C</color>      <!-- 主色浅底 -->
+    <color name="primary_light">#1E3A5C</color>     <!-- 选中态浅底 -->
+    <color name="gradient_start">#2E5A85</color>    <!-- 强调渐变起始 -->
+    <color name="gradient_end">#4DABFF</color>      <!-- 强调渐变结束 -->
+    <color name="splash_start">#1B2A3D</color>      <!-- 开屏渐变起始 -->
+    <color name="splash_mid">#2E5A85</color>        <!-- 开屏渐变中间 -->
+    <color name="splash_end">#4DABFF</color>        <!-- 开屏渐变结束 -->
+
+    <!-- 文字 -->
+    <color name="text_primary">#E7ECF3</color>
+    <color name="text_secondary">#9AA4B0</color>
+    <color name="text_tertiary">#6B7683</color>
+    <color name="text_mid">#9AA4B0</color>          <!-- 中灰文字 -->
+    <color name="text_light">#6B7683</color>        <!-- 浅灰文字 -->
+    <color name="text_deep">#C6CDD6</color>         <!-- 深灰文字（深底用亮灰） -->
+
+    <!-- 日志分层（深底亮化） -->
+    <color name="log_success">#3FBF7A</color>
+    <color name="log_error">#F26A6E</color>
+    <color name="log_skip">#7A8490</color>
+    <color name="log_info">#5CB4FF</color>
+    <color name="log_warn">#F2B04C</color>
+    <color name="log_normal">#A9B2BD</color>
+    <color name="log_time">#7A8490</color>
+
+    <!-- 状态色（深底亮化） -->
+    <color name="ok_green">#3FBF7A</color>
+    <color name="ok_soft">#1E3328</color>
+    <color name="err_red">#F26A6E</color>
+    <color name="err_soft">#3A2226</color>
+    <color name="warn_orange">#F2A84C</color>
+    <color name="warn_soft">#3A2E1E</color>
+    <color name="warn_dark">#F2B04C</color>          <!-- 橙色深字（深底变亮字） -->
+    <color name="accent_orange">#F28A4C</color>     <!-- 重点橙 -->
+    <color name="stroke_light">#2E4A66</color>      <!-- 浅蓝描边 -->
+    <color name="stroke_chip">#2E4A66</color>       <!-- 胶囊描边 -->
+
+    <!-- 平台官方品牌色（深底可读性 OK，保留原值） -->
+    <color name="igp_green">#FF5A00</color>
+    <color name="xingzhe_blue">#4D9DFA</color>
+    <color name="magene_blue">#3D7DC0</color>
+    <color name="outbase_orange">#FF6B00</color>
+    <color name="garmin_blue">#4D86B0</color>
+    <color name="coros_red">#E54B3B</color>
+    <color name="wahoo_red">#E60012</color>
+    <color name="blackbird_dark">#8CA0B5</color>
+    <color name="blackbird_green">#4CAF50</color>
+    <color name="bryton_red">#00A651</color>
+    <color name="mywhoosh_orange">#E8590C</color>
+    <color name="zwift_purple">#A06BD0</color>
+    <color name="keep_yellow">#FFB800</color>
+    <color name="codoon_green">#00B4A0</color>
+    <color name="zepp_blue">#5A7BE5</color>
+    <color name="komoot_red">#E23135</color>
+    <color name="suunto_blue">#3D9DE8</color>
+    <color name="twobulu_green">#4DA870</color>
+    <color name="joyrun_green">#00B578</color>
+    <color name="giant_blue">#5A8BD6</color>
+    <color name="intervals_icu_orange">#F57C00</color>
+
+    <!-- 基础色 -->
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="green">#3FBF7A</color>
+    <color name="red">#F26A6E</color>
+</resources>

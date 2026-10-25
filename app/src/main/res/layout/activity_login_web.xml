@@ -33,7 +33,7 @@
             android:layout_weight="1"
             android:text="登录完成后点击右侧按钮确认"
             android:textSize="11sp"
-            android:textColor="#999999"
+            android:textColor="@color/text_light"
             android:gravity="center" />
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnConfirmLogin"
@@ -67,7 +67,7 @@
             android:layout_height="wrap_content"
             android:text="使用mobile SSO方式（不经过Cloudflare）"
             android:textSize="12sp"
-            android:textColor="#999999"
+            android:textColor="@color/text_light"
             android:layout_marginBottom="32dp" />
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
@@ -109,13 +109,13 @@
             android:layout_height="wrap_content"
             android:text=""
             android:textSize="12sp"
-            android:textColor="#666666"
+            android:textColor="@color/text_mid"
             android:layout_marginTop="16dp"
             android:gravity="center" />
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
-            android:background="#EEEEEE"
+            android:background="@color/grey_light"
             android:layout_marginTop="24dp"
             android:layout_marginBottom="16dp" />
         <TextView
@@ -124,14 +124,14 @@
             android:text="⚠️ 登录失败常见原因"
             android:textSize="13sp"
             android:textStyle="bold"
-            android:textColor="#333333"
+            android:textColor="@color/text_deep"
             android:layout_marginBottom="8dp" />
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="1. 邮箱或密码错误（注意区分大小写）\n2. 开启了两步验证(MFA)，需先关闭\n3. 触发人机验证，改用软件内浏览器登录"
             android:textSize="12sp"
-            android:textColor="#666666"
+            android:textColor="@color/text_mid"
             android:lineSpacingExtra="4dp"
             android:layout_marginBottom="12dp" />
         <TextView
@@ -140,14 +140,14 @@
             android:text="【关闭两步验证步骤】"
             android:textSize="12sp"
             android:textStyle="bold"
-            android:textColor="#333333"
+            android:textColor="@color/text_deep"
             android:layout_marginBottom="4dp" />
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="① 打开佳明Connect App或访问佳明官网登录\n② 进入「设置」→「账户」→「安全设置」\n③ 找到「两步验证」选项，点击关闭\n④ 确认关闭后，返回本App重新登录"
             android:textSize="11sp"
-            android:textColor="#888888"
+            android:textColor="@color/text_light"
             android:lineSpacingExtra="3dp"
             android:layout_marginBottom="8dp" />
         <TextView
@@ -156,7 +156,7 @@
             android:layout_height="wrap_content"
             android:text="→ 前往佳明账号安全设置（手动关闭）"
             android:textSize="12sp"
-            android:textColor="#1989FA"
+            android:textColor="@color/xingzhe_blue"
             android:autoLink="none"
             android:clickable="true"
             android:focusable="true"
@@ -167,7 +167,7 @@
             android:layout_height="wrap_content"
             android:text="→ 遇到人机验证？用软件内浏览器登录"
             android:textSize="12sp"
-            android:textColor="#FF6B00"
+            android:textColor="@color/outbase_orange"
             android:clickable="true"
             android:focusable="true" />
         <!-- v8.2.1: 手动清空风控（不依赖登录态；提示强行重登会增加冷却） -->
@@ -177,7 +177,7 @@
             android:layout_height="wrap_content"
             android:text="→ 清空风控冷却（登录被限流/24小时后提示时点此）"
             android:textSize="12sp"
-            android:textColor="#E65100"
+            android:textColor="@color/accent_orange"
             android:clickable="true"
             android:focusable="true"
             android:layout_marginTop="12dp" />
@@ -204,7 +204,7 @@
             android:layout_height="wrap_content"
             android:text="使用手机号验证码登录，无需浏览器（适配旧机型）"
             android:textSize="12sp"
-            android:textColor="#999999"
+            android:textColor="@color/text_light"
             android:layout_marginBottom="32dp" />
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
@@ -259,7 +259,7 @@
             android:layout_height="wrap_content"
             android:text=""
             android:textSize="12sp"
-            android:textColor="#666666"
+            android:textColor="@color/text_mid"
             android:layout_marginTop="16dp"
             android:gravity="center" />
         <com.google.android.material.button.MaterialButton
@@ -271,8 +271,8 @@
             android:textSize="14sp"
             android:layout_marginTop="24dp"
             app:cornerRadius="12dp"
-            app:strokeColor="#FF6B00"
-            android:textColor="#FF6B00" />
+            app:strokeColor="@color/outbase_orange"
+            android:textColor="@color/outbase_orange" />
     </LinearLayout>
     <!-- v8.0.0: WebView 网页登录（原生验证码登录的兜底；底部可一键切回验证码登录） -->
     <LinearLayout
@@ -294,8 +294,8 @@
             android:text="切换回验证码登录"
             android:textSize="14sp"
             app:cornerRadius="12dp"
-            app:strokeColor="#666666"
-            android:textColor="#666666"
+            app:strokeColor="@color/text_mid"
+            android:textColor="@color/text_mid"
             android:visibility="gone" />
     </LinearLayout>
 </LinearLayout>

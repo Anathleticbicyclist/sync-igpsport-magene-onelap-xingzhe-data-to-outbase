@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v9.4.0: 设置页深色模式选中 chip（主色浅底 + 主色描边 + 12dp 圆角） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/primary_light" />
+    <corners android:radius="12dp" />
+    <stroke android:width="1dp" android:color="@color/primary" />
+</shape>
