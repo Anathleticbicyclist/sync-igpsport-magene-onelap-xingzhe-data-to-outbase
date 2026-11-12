@@ -7,7 +7,7 @@
 [![Android](https://img.shields.io/badge/Platform-Android-green)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-blue)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v9.4.0-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-v9.6.6-brightgreen)]()
 
 一款 Android 运动数据迁移工具：**一次勾选多个数据源平台，统一批量上传到 Outbase**，解决骑行/跑步数据散落在多个平台、难以集中管理的痛点。
 
@@ -200,6 +200,9 @@ cd sync-igpsport-magene-onelap-xingzhe-data-to-outbase
 ---
 
 ## 📋 更新日志
+
+### v9.6.6（2026-11-12）
+- **修复迈金玩鹿运动OTM最新数据获取BUG**：同步拉列表前先调 capability_list 预导入（单轮 20 条窗口、最多追 3 轮、实例级幂等），新骑完的记录不再"看不到"；refreshToken 严格校验 code==200 并回写新令牌（服务端未下发时保留旧值）；只有 401 才刷新重登，403 风控单列不重试
 
 ### v9.4.0（2026-10-25）
 - **新增深色模式三态开关**（对齐开发版 v9.2.9）：设置页新增「深色模式」入口，支持 **跟随系统 / 浅色 / 深色** 三种模式，全页面夜间适配（页面背景/卡片/文字/日志/平台徽章等颜色资源化 + values-night 深色配色，App 重启后保持）

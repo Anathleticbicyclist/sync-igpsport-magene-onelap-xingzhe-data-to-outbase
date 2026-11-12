@@ -32,6 +32,12 @@ class MageneApi {
     /** 迈金云端无此记录的FIT文件（2025-10后新记录未上传七牛） */
     class NoFileException(msg: String) : Exception(msg)
 
+    /** v9.6.6: 401 登录失效——唯一需要刷新 token / 重登的异常，其余错误不得触发刷新 */
+    class MageneAuthException(msg: String) : Exception(msg)
+
+    /** v9.6.6: 403 风控/业务拒绝——单列标记，不重试、不阻断其他平台同步 */
+    class MageneRiskControlException(msg: String) : Exception(msg)
+
     /** 迈金FIT下载结果: fromFitContent=true表示来自fit_content接口(GCJ-02需转换), false表示来自七牛云直链(WGS84无需转换) */
     data class MageneFitResult(val data: ByteArray, val fromFitContent: Boolean)
  
@@ -40,6 +46,18 @@ class MageneApi {
         const val LOGIN_URL = "https://otm.onelap.cn/login"
         private const val BASE = "https://otm.onelap.cn"
         private const val PER_PAGE = 20
+        /** v9.6.6: capability_list 预导入单轮窗口 20 条，首轮 + 最多追 3 轮 */
+        private const val IMPORT_WINDOW = 20
+        private const val MAX_IMPORT_ROUNDS = 4
+
+        /** v9.6.6: 是否继续追下一轮——本轮 20 条窗口被填满(inserted==total 且 ≥窗口大小)且未达上限才继续；
+         *  窗口没填满（如库里只剩 3 条）说明已导完，不能再追，否则白刷接口触发风控 */
+        internal fun shouldContinueImport(round: Int, inserted: Int, total: Int): Boolean =
+            round < MAX_IMPORT_ROUNDS && inserted >= IMPORT_WINDOW && inserted == total
+
+        /** v9.6.6: refresh_token 合并——服务端下发非空才覆盖，否则保留旧值 */
+        internal fun mergeRefreshToken(old: String?, new: String?): String? =
+            new?.takeIf { it.isNotEmpty() } ?: old
     }
  
     private val client = OkHttpClient.Builder()
@@ -92,9 +110,11 @@ class MageneApi {
         }
  
     /**
-     * token刷新
+     * token刷新（v9.6.6 改造）
+     * 返回 Pair(新token, 新refreshToken?)：新refreshToken为 null 表示服务端未下发，调用方保留旧值。
+     * 严格校验 HTTP 200 且业务 code==200，否则视为刷新失败，不返回半成品 token。
      */
-    suspend fun refreshToken(refreshToken: String): String? =
+    suspend fun refreshToken(refreshToken: String): Pair<String, String?>? =
         withContext(Dispatchers.IO) {
             try {
                 val body = JSONObject().apply {
@@ -104,14 +124,34 @@ class MageneApi {
                 }
                 val req = Request.Builder()
                     .url("$BASE/api/token")
-                    .addHeader("User-Agent", "Mozilla/5.0")
+                    .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0")
+                    .addHeader("Origin", BASE)
                     .post(body.toString().toRequestBody(JSON))
                     .build()
                 val resp = client.newCall(req).execute()
-                val json = JSONObject(resp.body?.string() ?: "")
+                val respBody = resp.body?.string() ?: ""
+                if (resp.code != 200) {
+                    Log.w(TAG, "refreshToken 刷新失败 HTTP ${resp.code}: ${respBody.take(120)}")
+                    return@withContext null
+                }
+                val json = try { JSONObject(respBody) } catch (e: Exception) {
+                    Log.w(TAG, "refreshToken 响应非JSON: ${respBody.take(120)}")
+                    return@withContext null
+                }
+                if (json.optInt("code", -1) != 200) {
+                    Log.w(TAG, "refreshToken 业务失败 code=${json.optInt("code", -1)}: ${respBody.take(120)}")
+                    return@withContext null
+                }
                 val data = json.optJSONObject("data")
                 val tok = data?.optString("token", "") ?: ""
-                if (tok.isNotEmpty()) tok else null
+                if (tok.isEmpty()) {
+                    Log.w(TAG, "refreshToken 响应无token")
+                    return@withContext null
+                }
+                // 空/缺省时返回 null，调用方保留旧 refresh_token，避免把轮换令牌写丢
+                val newRefresh = data.optString("refresh_token", "").takeIf { it.isNotEmpty() }
+                Log.d(TAG, "refreshToken ok, token len=${tok.length}, refresh=${if (newRefresh != null) "更新" else "沿用旧值"}")
+                Pair(tok, newRefresh)
             } catch (e: Exception) {
                 Log.e(TAG, "refreshToken error", e)
                 null
@@ -192,8 +232,111 @@ class MageneApi {
         }
     }
 
+    // ===== v9.6.6: 迈金 OTM capability_list 预导入 =====
+    // 根因：ride_record/list 只返回"已导入 OTM 库"的记录；刚骑完的新记录在 OTM 侧还不存在，
+    // 必须先用 capability_list 触发预导入，否则同步永远只看到老记录（表现为"没有需要同步的了"）。
+
+    /** 实例级幂等：同一次同步流程内 capability_list 成功一次后不再重复调用 */
+    @Volatile
+    private var capabilityImported = false
+
+    /** 从 JWT payload 解析 uid；缺失时降级返回空串（接口仍可调用，由服务端按 token 归属处理） */
+    fun getUidFromToken(token: String): String {
+        return try {
+            val parts = token.split(".")
+            if (parts.size < 2) return ""
+            // JWT payload 是 base64url，用 JDK 解码器（API 26+ 可用），可脱离 Android 运行时单测
+            val decoded = String(java.util.Base64.getUrlDecoder().decode(parts[1]), Charsets.UTF_8)
+            val payload = JSONObject(decoded)
+            val uid = payload.optString("uid", "").ifEmpty { payload.optString("userId", "") }
+                .ifEmpty { payload.optString("user_id", "") }
+                .ifEmpty { payload.optString("sub", "") }
+            if (uid.isEmpty()) Log.w(TAG, "getUidFromToken: JWT中无uid字段，降级发空串")
+            uid
+        } catch (e: Exception) {
+            Log.w(TAG, "getUidFromToken 解析失败: ${e.message}")
+            ""
+        }
+    }
+
+    /**
+     * 预导入最新记录（capability_list）
+     * 单轮窗口 20 条；inserted==total 表示窗口已导满、可能还有下一批，最多再追 3 轮。
+     * @return 本轮累计触发导入的条数
+     */
+    suspend fun importLatestRecords(token: String): Int = withContext(Dispatchers.IO) {
+        if (capabilityImported) {
+            Log.d(TAG, "importLatestRecords: 本次流程已预导入，跳过")
+            return@withContext 0
+        }
+        val uid = getUidFromToken(token)
+        var imported = 0
+        var ok = false
+        var round = 0
+        while (round < MAX_IMPORT_ROUNDS) {
+            round++
+            val body = JSONObject().apply { put("uid", uid) }
+            val resp = try {
+                val req = Request.Builder()
+                    .url("$BASE/api/otm/ride_record/capability_list")
+                    .addHeader("Authorization", token)   // 裸 token，与列表/详情接口同口径
+                    .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0")
+                    .addHeader("Origin", BASE)
+                    .addHeader("Referer", "$BASE/calendar")
+                    .post(body.toString().toRequestBody(JSON))
+                    .build()
+                client.newCall(req).execute()
+            } catch (e: Exception) {
+                Log.w(TAG, "capability_list 网络异常: ${e.message}")
+                break
+            }
+            val respBody = resp.body?.string() ?: ""
+            if (resp.code == 401) throw MageneAuthException("迈金登录已过期，请重新登录")
+            if (resp.code == 403) throw MageneRiskControlException("迈金拒绝访问(HTTP 403): ${respBody.take(100)}")
+            val json = try { JSONObject(respBody) } catch (e: Exception) { null }
+            if (json == null) {
+                Log.w(TAG, "capability_list 响应非JSON: ${respBody.take(100)}")
+                break
+            }
+            val code = json.optInt("code", -1)
+            if (code == 401) throw MageneAuthException("迈金登录已过期，请重新登录")
+            if (code == 403) throw MageneRiskControlException("迈金触发风控(403): ${json.optString("error", respBody.take(100))}")
+            if (code != 200) {
+                Log.w(TAG, "capability_list 业务错误 code=$code: ${json.optString("error", respBody.take(100))}")
+                break
+            }
+            ok = true
+            val data = json.optJSONObject("data")
+            val inserted = data?.optInt("inserted", 0) ?: 0
+            val total = data?.optInt("total", inserted) ?: inserted
+            imported += inserted
+            Log.d(TAG, "capability_list round=$round window=$IMPORT_WINDOW inserted=$inserted total=$total")
+            // 本轮没导满（inserted<total）说明窗口内已全部入库，不必再追
+            if (!shouldContinueImport(round, inserted, total)) break
+            kotlinx.coroutines.delay(300)
+        }
+        if (ok) capabilityImported = true
+        if (imported > 0) Log.d(TAG, "capability_list 预导入完成，累计 $imported 条")
+        imported
+    }
+
+    /** 列表前置调用：401 交给上层刷新，403 风控只记日志不阻断，其他异常静默降级 */
+    private suspend fun safeImportLatest(token: String) {
+        try {
+            importLatestRecords(token)
+        } catch (e: MageneAuthException) {
+            throw e
+        } catch (e: MageneRiskControlException) {
+            Log.w(TAG, "预导入触发风控，本轮跳过: ${e.message}")
+        } catch (e: Exception) {
+            Log.w(TAG, "预导入失败(忽略，继续列表): ${e.message}")
+        }
+    }
+
     suspend fun getActivities(token: String, skip: Int, limit: Int): List<ActivityRecord> =
         withContext(Dispatchers.IO) {
+            // v9.6.6: 严格在 ride_record/list 之前预导入最新记录（实例级幂等，只做一次）
+            safeImportLatest(token)
             val result = mutableListOf<ActivityRecord>()
             // 服务端分页: page从 skip/PER_PAGE + 1 开始
             var page = skip / PER_PAGE + 1
@@ -213,10 +356,12 @@ class MageneApi {
                     .build()
                 val resp = client.newCall(req).execute()
                 val respBody = resp.body?.string() ?: throw Exception("列表空响应")
-                if (resp.code == 401) throw Exception("迈金登录已过期，请重新登录")
+                if (resp.code == 401) throw MageneAuthException("迈金登录已过期，请重新登录")
+                if (resp.code == 403) throw MageneRiskControlException("迈金拒绝访问(HTTP 403): ${respBody.take(100)}")
                 val json = JSONObject(respBody)
                 val code = json.optInt("code", -1)
-                if (code == 401) throw Exception("迈金登录已过期，请重新登录")
+                if (code == 401) throw MageneAuthException("迈金登录已过期，请重新登录")
+                if (code == 403) throw MageneRiskControlException("迈金触发风控(403): ${json.optString("error", respBody.take(100))}")
                 if (code != 200) throw Exception("迈金列表错误: ${json.optString("error", respBody.take(100))}")
  
                 val data = json.optJSONObject("data") ?: break
@@ -303,8 +448,11 @@ class MageneApi {
                 .get().build()
             val resp = client.newCall(req).execute()
             val respBody = resp.body?.string() ?: throw Exception("详情空响应")
-            if (resp.code == 401) throw Exception("迈金登录已过期，请重新登录")
+            if (resp.code == 401) throw MageneAuthException("迈金登录已过期，请重新登录")
+            if (resp.code == 403) throw MageneRiskControlException("迈金拒绝访问(HTTP 403): ${respBody.take(100)}")
             val json = JSONObject(respBody)
+            if (json.optInt("code", -1) == 401) throw MageneAuthException("迈金登录已过期，请重新登录")
+            if (json.optInt("code", -1) == 403) throw MageneRiskControlException("迈金触发风控(403): ${respBody.take(100)}")
             if (json.optInt("code", -1) != 200) throw Exception("迈金详情错误: ${respBody.take(100)}")
             val riding = json.optJSONObject("data")?.optJSONObject("ridingRecord")
             val durl = riding?.optString("durl", "") ?: ""

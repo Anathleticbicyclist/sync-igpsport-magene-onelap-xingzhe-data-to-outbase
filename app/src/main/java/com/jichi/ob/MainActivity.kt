@@ -1461,10 +1461,11 @@ class MainActivity : AppCompatActivity() {
                             if (expLeft != null && expLeft < 3600) {
                                 val refresh = prefs.getMageneRefreshToken()
                                 if (!refresh.isNullOrEmpty()) {
-                                    val newTok = mageneApi.refreshToken(refresh)
-                                    if (newTok != null && newTok != cred) {
-                                        prefs.saveCredential(ds, newTok)
-                                        prefs.saveMageneRefreshToken(refresh)
+                                    val fresh = mageneApi.refreshToken(refresh)
+                                    if (fresh != null && fresh.first != cred) {
+                                        prefs.saveCredential(ds, fresh.first)
+                                        // v9.6.6: 服务端下发新 refresh_token 才覆盖，未下发保留旧值
+                                        fresh.second?.let { prefs.saveMageneRefreshToken(it) }
                                         runOnUiThread { appendLog("🔄 ${ds.displayName} token将过期，已后台提前刷新") }
                                     }
                                 }
@@ -1525,7 +1526,13 @@ class MainActivity : AppCompatActivity() {
     private suspend fun refreshCredentialOnStart(ds: DataSource, cred: String): String? = when (ds) {
         DataSource.MAGENE -> {
             val refresh = prefs.getMageneRefreshToken()
-            if (refresh.isNullOrEmpty()) null else mageneApi.refreshToken(refresh)
+            if (refresh.isNullOrEmpty()) null
+            else mageneApi.refreshToken(refresh)?.let { fresh ->
+                // v9.6.6: 刷新成功立即回写 token；refresh_token 非空才覆盖
+                prefs.saveMageneToken(fresh.first)
+                fresh.second?.let { prefs.saveMageneRefreshToken(it) }
+                fresh.first
+            }
         }
         DataSource.WAHOO -> {
             val refresh = prefs.getWahooRefresh()
@@ -2249,22 +2256,24 @@ class MainActivity : AppCompatActivity() {
                 else prefs.saveGarminCnToken(cred)
             }
         }
-        // v7.6.9: 迈金源token过期(401)自动刷新后重试一次
+        // v7.6.9: 迈金源token过期(401)自动刷新后重试一次（v9.6.6: 仅 AuthException 刷新，403 风控按业务错误透出）
         if (source == DataSource.MAGENE) {
             try {
                 return mageneApi.getActivities(cred, skip, limit)
-            } catch (e: Exception) {
-                if (e.message?.contains("过期") == true || e.message?.contains("401") == true) {
-                    val refresh = prefs.getMageneRefreshToken()
-                    if (!refresh.isNullOrEmpty()) {
-                        appendLog("🔄 迈金登录已过期，自动刷新token后重试...")
-                        val newTok = mageneApi.refreshToken(refresh)
-                        if (newTok != null) {
-                            prefs.saveMageneToken(newTok)
-                            return mageneApi.getActivities(newTok, skip, limit)
-                        }
+            } catch (e: MageneApi.MageneAuthException) {
+                val refresh = prefs.getMageneRefreshToken()
+                if (!refresh.isNullOrEmpty()) {
+                    appendLog("🔄 迈金登录已过期，自动刷新token后重试...")
+                    val fresh = mageneApi.refreshToken(refresh)
+                    if (fresh != null) {
+                        prefs.saveMageneToken(fresh.first)
+                        fresh.second?.let { prefs.saveMageneRefreshToken(it) }
+                        return mageneApi.getActivities(fresh.first, skip, limit)
                     }
                 }
+                throw e
+            } catch (e: MageneApi.MageneRiskControlException) {
+                appendLog("⚠️ 迈金风控未解除，本平台跳过重试: ${e.message}")
                 throw e
             }
         }

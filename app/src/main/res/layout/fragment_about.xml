@@ -62,7 +62,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="3dp"
-                        android:text="正式版 v9.4.0"
+                        android:text="正式版 v9.6.6"
                         android:textColor="@color/primary"
                         android:textSize="11sp" />
                 </LinearLayout>
@@ -147,9 +147,9 @@
             app:cardElevation="1dp">
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="📋 更新日志" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v9.6.6 · 修复迈金玩鹿运动OTM最新数据获取BUG" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v9.4.0 · 新增深色模式三态开关（跟随系统/浅色/深色，全页面夜间适配）；UI 视觉精修（配色/圆角/间距统一，对齐开发版）" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v9.2.0 · 新增时区修正设置（按平台单独设置当天/历史 +8/-8小时，上传Outbase前自动修正，默认不调整，对齐开发版v9.2.2）" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="v9.1.2 · 新增数据源 CyCity（手机号+密码纯API登录，下载运动记录上传Outbase，对齐开发版）" android:textSize="12sp" android:textStyle="bold" android:textColor="@color/primary_dark" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

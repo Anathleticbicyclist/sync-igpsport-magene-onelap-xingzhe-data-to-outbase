@@ -253,22 +253,25 @@ class AutoSyncWorker(
     /** v7.6.9: 自动同步日志统一加[自动]前缀，与手动同步区分 */
     private fun plog(msg: String) = prefs.appendPersistLog("[自动] $msg")
 
-    /** v7.6.9: 迈金列表401自动刷新token后重试一次 */
+    /** v7.6.9: 迈金列表401自动刷新token后重试一次（v9.6.6: 仅 MageneAuthException 触发刷新，403 风控不重试） */
     private suspend fun getMageneActivitiesWithRefresh(token: String, skip: Int, limit: Int): List<ActivityRecord> {
         try {
             return mageneApi.getActivities(token, skip, limit)
-        } catch (e: Exception) {
-            if (e.message?.contains("过期") == true || e.message?.contains("401") == true) {
-                val refresh = prefs.getMageneRefreshToken()
-                if (!refresh.isNullOrEmpty()) {
-                    val newTok = mageneApi.refreshToken(refresh)
-                    if (newTok != null) {
-                        prefs.saveMageneToken(newTok)
-                        plog("🔄 迈金登录已过期，自动刷新token后重试")
-                        return mageneApi.getActivities(newTok, skip, limit)
-                    }
+        } catch (e: MageneApi.MageneAuthException) {
+            val refresh = prefs.getMageneRefreshToken()
+            if (!refresh.isNullOrEmpty()) {
+                val fresh = mageneApi.refreshToken(refresh)
+                if (fresh != null) {
+                    prefs.saveMageneToken(fresh.first)
+                    // 服务端下发新轮换令牌才覆盖，未下发时保留旧值
+                    fresh.second?.let { prefs.saveMageneRefreshToken(it) }
+                    plog("🔄 迈金登录已过期，自动刷新token后重试")
+                    return mageneApi.getActivities(fresh.first, skip, limit)
                 }
             }
+            throw e
+        } catch (e: MageneApi.MageneRiskControlException) {
+            plog("⚠️ 迈金风控未解除，本平台跳过重试: ${e.message}")
             throw e
         }
     }

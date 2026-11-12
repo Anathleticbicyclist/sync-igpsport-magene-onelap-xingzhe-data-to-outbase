@@ -18,8 +18,8 @@ android {
         applicationId "com.jichi.ob"
         minSdk 26
         targetSdk 36
-        versionCode 940
-        versionName "9.4.0"
+        versionCode 966
+        versionName "9.6.6"
         // Wahoo开发者凭证从local.properties读取（不硬编码到源码）
         buildConfigField "String", "WAHOO_CLIENT_ID", "\"${keystoreProperties['wahoo_client_id'] ?: ""}\""
         buildConfigField "String", "WAHOO_CLIENT_SECRET", "\"${keystoreProperties['wahoo_client_secret'] ?: ""}\""
