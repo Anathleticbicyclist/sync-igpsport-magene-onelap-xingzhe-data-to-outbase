@@ -358,6 +358,7 @@ class MergeFragment : Fragment() {
         btnSaveMerge.isEnabled = false
         lifecycleScope.launch {
             val groups = ArrayList<List<GpxToFitConverter.TrackPoint>>()
+            val metas = ArrayList<TrackMerger.SegmentMeta?>()
             var parsedSport = -1
             var failCount = 0
             var lastErrLocal = ""
@@ -366,6 +367,14 @@ class MergeFragment : Fragment() {
                 val pts = withContext(Dispatchers.Default) { parseBytes(bytes) }
                 if (pts.isNullOrEmpty()) { failCount++; lastErrLocal = "「${names[i]}」$lastErrLocal"; continue }
                 groups.add(pts)
+                // v9.7.0: 同时读取该段 FIT 的 session 原值（里程/计时/爬升），合并时直取，不再按点列重算
+                metas.add(withContext(Dispatchers.Default) {
+                    if (GpxToFitConverter.isFit(bytes)) {
+                        FitParser.parseSessionMeta(bytes)?.let {
+                            TrackMerger.SegmentMeta(it.startSec, it.distanceM, it.timerSec, it.ascentM)
+                        }
+                    } else null
+                })
                 if (parsedSport < 0) parsedSport = TrackMerger.detectSportFromName(names[i])
             }
             btnSaveMerge.isEnabled = true
@@ -378,7 +387,7 @@ class MergeFragment : Fragment() {
             if (failCount > 0) tvMergeHint.text = "部分文件解析失败（${groups.size}/$names.size），继续处理剩余..."
             val result = try {
                 withContext(Dispatchers.Default) {
-                    TrackMerger.mergePointGroups(groups, forcedSport = if (!isMerge) parsedSport else -1)
+                    TrackMerger.mergePointGroupsWithMeta(groups, metas, forcedSport = if (!isMerge) parsedSport else -1)
                 }
             } catch (e: Exception) {
                 toast("处理失败：${e.message}"); return@launch
@@ -622,6 +631,7 @@ class MergeFragment : Fragment() {
         tvMergeHint.text = if (isMerge) "正在合并 ${chosen.size} 条记录..." else "正在处理 1 条记录..."
         lifecycleScope.launch {
             val groups = ArrayList<List<GpxToFitConverter.TrackPoint>>()
+            val metas = ArrayList<TrackMerger.SegmentMeta?>()
             val main = activity as? MainActivity ?: return@launch
             var parsedSport = -1
             var fitFail = 0
@@ -638,6 +648,10 @@ class MergeFragment : Fragment() {
                     val fr = FitParser.parse(bytes)
                     if (fr != null && fr.points.isNotEmpty()) {
                         groups.add(fr.points)
+                        // v9.7.0: 同步取该段 session 原值
+                        metas.add(FitParser.parseSessionMeta(bytes)?.let {
+                            TrackMerger.SegmentMeta(it.startSec, it.distanceM, it.timerSec, it.ascentM)
+                        })
                         if (parsedSport < 0 && fr.sport > 0) parsedSport = fr.sport
                     } else {
                         fitFail++
@@ -646,7 +660,7 @@ class MergeFragment : Fragment() {
                 } else {
                     try {
                         val pts = GpxToFitConverter.parseGpxBytes(bytes)
-                        if (pts.isNotEmpty()) groups.add(pts)
+                        if (pts.isNotEmpty()) { groups.add(pts); metas.add(null) }
                         else { fitFail++; lastErrMsg = "GPX 无有效轨迹点（${bytes.size} 字节，室内运动如跑步机无GPS轨迹，请选室外记录）" }
                     } catch (e: Exception) {
                         fitFail++
@@ -666,7 +680,7 @@ class MergeFragment : Fragment() {
             }
             val result = try {
                 withContext(Dispatchers.Default) {
-                    TrackMerger.mergePointGroups(groups, forcedSport = if (!isMerge) parsedSport else -1)
+                    TrackMerger.mergePointGroupsWithMeta(groups, metas, forcedSport = if (!isMerge) parsedSport else -1)
                 }
             } catch (e: Exception) {
                 toast("处理失败：${e.message}"); return@launch
@@ -712,12 +726,27 @@ class MergeFragment : Fragment() {
         return if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, s) else String.format(Locale.US, "%d:%02d", m, s)
     }
 
+    /** v9.7.0: 合并结果写 FIT——有圈信息（各段 session 原值）时按圈直填，否则沿用单圈点列口径 */
+    private fun buildMergeFit(result: TrackMerger.MergedResult): ByteArray {
+        return if (result.laps.isNotEmpty()) {
+            GpxToFitConverter.convertPointsWithLaps(
+                result.points,
+                result.sport,
+                result.laps.map { GpxToFitConverter.FitLap(it.startTs, it.endTs, it.distanceM, it.timerSec) },
+                result.totalDistanceKm * 1000.0,
+                result.totalDurationSec
+            )
+        } else {
+            GpxToFitConverter.convertPoints(result.points, result.sport)
+        }
+    }
+
     private fun saveMerge() {
         val result = mergedResult ?: return
         val name = mergeFileName()
         val dir = File(MainActivity.SAVE_DIR, "合并")
         if (!dir.exists()) dir.mkdirs()
-        val fit = try { GpxToFitConverter.convertPoints(result.points, result.sport) } catch (e: Exception) { toast("FIT 生成失败：${e.message}"); return }
+        val fit = try { buildMergeFit(result) } catch (e: Exception) { toast("FIT 生成失败：${e.message}"); return }
         val file = File(dir, "$name.fit")
         try {
             file.writeBytes(fit)
@@ -740,7 +769,7 @@ class MergeFragment : Fragment() {
         val name = mergeFileName()
         try {
             val data = if (exportFit) {
-                GpxToFitConverter.convertPoints(result.points, result.sport)
+                buildMergeFit(result)
             } else {
                 TrackMerger.buildGpx(result, "merged-${TrackMerger.sportName(result.sport)}")
             }

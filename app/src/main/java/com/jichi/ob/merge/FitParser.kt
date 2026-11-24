@@ -31,6 +31,47 @@ object FitParser {
         val title: String
     )
 
+    /**
+     * v9.7.0（对齐开发版 v9.6.9）：单段 FIT 的 session 原始指标。
+     * 合并时直接取码表记录的里程/计时/爬升原值，而不是按 GPS 点列重算——
+     * 点列重算会因简化、漂移、跨段跳飞而系统性偏低或偏高。
+     */
+    data class SessionMeta(
+        val startSec: Long,
+        val distanceM: Double,
+        val timerSec: Long,
+        val ascentM: Double
+    )
+
+    /** 读取 FIT 的 session 原始指标；读不到返回 null（调用方回落到点列重算）。 */
+    fun parseSessionMeta(bytes: ByteArray): SessionMeta? {
+        return try {
+            if (bytes.size < 14) return null
+            if (bytes[8].toInt() and 0xFF != '.'.code || bytes[9].toInt() and 0xFF != 'F'.code) return null
+
+            var meta: SessionMeta? = null
+            val decode = Decode()
+            val bc = MesgBroadcaster(decode)
+            decode.addListener(bc as com.garmin.fit.MesgListener)
+            bc.addListener(object : SessionMesgListener {
+                override fun onMesg(mesg: SessionMesg) {
+                    if (meta != null) return
+                    val start = mesg.startTime?.timestamp?.let { it + 631065600L } ?: 0L
+                    val dist = (mesg.totalDistance ?: 0f).toDouble()
+                    val timer = (mesg.totalTimerTime ?: 0f).toDouble()
+                    val ascent = mesg.totalAscent?.toDouble() ?: 0.0
+                    // 里程或计时为 0 视为设备未记录，交由点列重算兜底
+                    if (dist <= 0.0 || timer <= 0.0) return
+                    meta = SessionMeta(start, dist, timer.toLong(), ascent)
+                }
+            })
+            try {
+                decode.read(ByteArrayInputStream(bytes).buffered())
+            } catch (_: Exception) { return meta }
+            meta
+        } catch (_: Exception) { null }
+    }
+
     /** 解析 FIT 字节。返回 null 表示解析失败（文件损坏或非 FIT）。 */
     fun parse(bytes: ByteArray): FitResult? {
         return try {
@@ -91,7 +132,30 @@ object FitParser {
                     )
                 )
             }
-            if (pts.isEmpty()) return null
+            if (pts.isEmpty()) {
+                // v9.7.0: 室内骑行台（顽鹿 / 迈金台子等）导出的 FIT 通常不含 GPS 坐标，
+                // 原逻辑会直接判"无轨迹"而整段丢弃。这里在"有 record 但无坐标"时，
+                // 按时间轴 + 功率/心率/踏频构造点列（坐标置 0,0），让合并与预览可用。
+                // 上传链路走原始 FIT 文件，不经过这里的点列重建，因此不受影响。
+                if (records.isEmpty()) return null
+                for (r in records) {
+                    val ele = r.altitude?.toDouble() ?: 0.0
+                    val ts = r.timestamp?.getTimestamp()?.let { it + 631065600L } ?: 0L
+                    if (ts > 0) lastTs = ts
+                    pts.add(
+                        GpxToFitConverter.TrackPoint(
+                            lat = 0.0,
+                            lon = 0.0,
+                            ele = if (ele > 0) ele else 0.0,
+                            ts = if (ts > 0) ts else lastTs,
+                            hr = (r.heartRate ?: 0).toInt().coerceIn(0, 255),
+                            cad = (r.cadence ?: 0).toInt().coerceIn(0, 255),
+                            power = (r.power ?: 0).toInt().coerceIn(0, 65535)
+                        )
+                    )
+                }
+                if (pts.isEmpty()) return null
+            }
             FitResult(pts, sport, "")
         } catch (_: Exception) { null }
     }

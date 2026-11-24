@@ -33,6 +33,12 @@ object TrackMerger {
         val points: List<GpxToFitConverter.TrackPoint>
     )
 
+    /** v9.7.0: 单段 session 原值（来自设备码表记录，不是点列重算） */
+    data class SegmentMeta(val startSec: Long, val distanceM: Double, val timerSec: Long, val ascentM: Double = 0.0)
+
+    /** v9.7.0: 合并后的单圈（多日合并即按天/按段分圈） */
+    data class LapInfo(val startTs: Long, val endTs: Long, val distanceM: Double, val timerSec: Long)
+
     data class MergedResult(
         val points: List<GpxToFitConverter.TrackPoint>,
         val sport: Int,
@@ -48,7 +54,11 @@ object TrackMerger {
         val avgCad: Int,
         val avgPower: Int,
         val segmentCount: Int,
-        val pointCount: Int
+        val pointCount: Int,
+        /** v9.7.0: 各段圈信息；非空时 FIT 写出按圈直填源值 */
+        val laps: List<LapInfo> = emptyList(),
+        /** v9.7.0: 是否使用了 session 原值口径（false = 仍按点列重算） */
+        val fromSourceMeta: Boolean = false
     )
 
     /**
@@ -75,7 +85,26 @@ object TrackMerger {
         return mergeSegments(segments, forcedSport)
     }
 
-    private fun mergeSegments(segments: List<Segment>, forcedSport: Int): MergedResult {
+    /** v9.7.0: 带 session 原值的合并入口（metas 与 groups 一一对应，允许 null） */
+    fun mergePointGroupsWithMeta(
+        groups: List<List<GpxToFitConverter.TrackPoint>>,
+        metas: List<SegmentMeta?>,
+        forcedSport: Int = -1
+    ): MergedResult {
+        val pairs = groups.mapIndexed { i, pts -> pts to metas.getOrNull(i) }
+            .filter { it.first.isNotEmpty() }
+        if (pairs.isEmpty()) throw IllegalArgumentException("无可合并的轨迹")
+        val segments = pairs.mapIndexed { i, pair ->
+            Segment("segment${i + 1}", if (i == 0) detectSport("") else -1, pair.first)
+        }
+        return mergeSegments(segments, forcedSport, pairs.map { it.second })
+    }
+
+    private fun mergeSegments(
+        segments: List<Segment>,
+        forcedSport: Int,
+        metas: List<SegmentMeta?> = emptyList()
+    ): MergedResult {
         // 1) 剔除空段，按开始时间排序
         val valid = segments.filter { it.points.isNotEmpty() }
         val sorted = valid.sortedBy { it.points.firstOrNull()?.ts ?: 0L }
@@ -86,44 +115,70 @@ object TrackMerger {
             else -> sorted.firstOrNull()?.sport?.takeIf { it > 0 } ?: SPORT_CYCLING
         }
 
-        // 3) 拼接点，时间戳压缩（运动时间口径）：
-        //    段间间隔清零（紧接 +1s）；段内保留原始时间差，但 >120s 的大间隙（暂停/停表/跨天）
-        //    截断为 120s——真实 FIT 记录常含数十分钟到数小时的暂停，多条合并后暂停全部累加，
-        //    会被平台解析成几十小时（如 4 条记录合并出 50:11:17），平均速度严重偏低。
-        //    v7.9.11 段间压缩 + v8.0.7 段内大间隙压缩。
+        // v9.7.0（对齐开发版 v9.6.9）：只要任一段带 session 原值，就整体走"取原值 + 原始时间轴"口径：
+        //   1) 时间戳不再压缩，段内 / 段间一律用原始 getTs()，只保证严格递增（多日合并的真实时间轴得以保留）；
+        //   2) 每段距离 / 计时 / 爬升取设备 session 原值，不再由 GPS 点列重算；
+        //   3) 每段生成一个 lap，多日合并即"按天分圈"，lap 距离 / 计时直填源段原值。
+        // 任一段都没有 session 原值时，完全沿用旧口径（压缩暂停、点列重算），行为与 v9.6.6 一致。
+        val srcMode = metas.any { it != null }
+
+        // 3) 拼接点（srcMode：原始时间轴；否则：段间清零 + 段内大间隙截断）
         val merged = ArrayList<GpxToFitConverter.TrackPoint>()
         val segStartIdx = ArrayList<Int>() // 每段首点在 merged 中的索引（统计时跳过段间"跳飞"距离）
-        var cursorTs = -1L // 上段末点的时间戳（压缩后）
-        for (seg in sorted) {
+        val laps = ArrayList<LapInfo>()
+        var cursorTs = -1L // 上段末点的时间戳
+        for ((si, seg) in sorted.withIndex()) {
+            val meta = metas.getOrNull(si)
             var prevRawTs = -1L
             var segFirst = true
+            var segStartTs = -1L
+            var segEndTs = -1L
+            var segHaversineM = 0.0
+            var segPrev: GpxToFitConverter.TrackPoint? = null
             for (p in seg.points) {
-                val newTs: Long
-                when {
-                    p.ts <= 0L -> newTs = if (cursorTs < 0) 1L else cursorTs + 1
+                val newTs: Long = if (srcMode) {
+                    // 原始时间轴：有原始时间戳就用原始值，只保证严格递增
+                    val raw = if (p.ts > 0L) p.ts else (if (cursorTs < 0) 1L else cursorTs + 1)
+                    if (raw > cursorTs) raw else cursorTs + 1
+                } else when {
+                    p.ts <= 0L -> if (cursorTs < 0) 1L else cursorTs + 1
                     prevRawTs < 0L -> {
                         // 段首：第一段保留原始起点，其余段紧接上段末点
-                        newTs = if (cursorTs < 0) p.ts else cursorTs + 1
                         prevRawTs = p.ts
+                        if (cursorTs < 0) p.ts else cursorTs + 1
                     }
                     else -> {
                         // 段内：保留原始时间差，但 >MAX_SEG_INTERVAL_S 的大间隙截断
-                        newTs = cursorTs + (p.ts - prevRawTs).coerceAtMost(MAX_SEG_INTERVAL_S)
+                        val v = cursorTs + (p.ts - prevRawTs).coerceAtMost(MAX_SEG_INTERVAL_S)
                         prevRawTs = p.ts
+                        v
                     }
                 }
                 if (newTs > cursorTs) {
-                    if (segFirst) { segStartIdx.add(merged.size); segFirst = false }
+                    if (segFirst) { segStartIdx.add(merged.size); segFirst = false; segStartTs = newTs }
+                    segEndTs = newTs
                     merged.add(p.copy(ts = newTs))
                     cursorTs = newTs
                 }
+                val sp = segPrev
+                if (sp != null) segHaversineM += haversineKm(sp.lat, sp.lon, p.lat, p.lon) * 1000.0
+                segPrev = p
+            }
+            // v9.7.0: 每段一圈；优先级 session 原值 > 点列兜底
+            if (segStartTs > 0 && segEndTs >= segStartTs) {
+                val lapDistM = if (meta != null && meta.distanceM > 0) meta.distanceM else segHaversineM
+                val lapTimerS = if (meta != null && meta.timerSec > 0) meta.timerSec
+                               else (segEndTs - segStartTs).coerceAtLeast(1L)
+                laps.add(LapInfo(segStartTs, segEndTs, lapDistM, lapTimerS))
             }
         }
         if (merged.isEmpty()) throw IllegalArgumentException("合并后无有效轨迹点")
+        // 非原值口径不进圈信息，保持 v9.6.6 单圈输出
+        if (!srcMode) laps.clear()
 
         // 4) 统计（含累加距离、累计爬升/下降、心率）
-        //    距离/爬升只按段内累计：段首点重置 prev，段间"跳飞"（不同地点记录相连）不计入总距离
-        var distanceKm = 0.0
+        //    点列统计只按段内累计：段首点重置 prev，段间"跳飞"（不同地点记录相连）不计入总距离
+        var haversineM = 0.0
         var ascent = 0.0
         var descent = 0.0
         var hrSum = 0L; var hrCount = 0L; var maxHr = 0
@@ -135,9 +190,7 @@ object TrackMerger {
         for ((i, p) in merged.withIndex()) {
             if (i in segStartSet) { prev = null; prevEle = null }
             val pr = prev
-            if (pr != null) {
-                distanceKm += haversineKm(pr.lat, pr.lon, p.lat, p.lon)
-            }
+            if (pr != null) haversineM += haversineKm(pr.lat, pr.lon, p.lat, p.lon) * 1000.0
             val pe = prevEle
             if (pe != null) {
                 val d = p.ele - pe
@@ -149,9 +202,19 @@ object TrackMerger {
             prev = p
             prevEle = if (p.ele > 0) p.ele else null
         }
+
+        // v9.7.0: 原值口径优先取各段 session 原值（里程 / 计时 / 爬升），点列值仅作兜底
+        val lapDistM = laps.fold(0.0) { acc, l -> acc + l.distanceM }
+        val lapTimerS = laps.fold(0L) { acc, l -> acc + l.timerSec }
+        var srcAscent = 0.0
+        if (srcMode) for (m in metas) if (m != null && m.ascentM > 0) srcAscent += m.ascentM
+        val totalDistanceM = if (srcMode && lapDistM > 0) lapDistM else haversineM
+        val totalDuration = if (srcMode && lapTimerS > 0) lapTimerS
+                            else (merged.last().ts - merged.first().ts).coerceAtLeast(1L)
+        if (srcMode && srcAscent > 0) ascent = srcAscent
+
         val startTs = merged.first().ts.takeIf { it > 0 } ?: (System.currentTimeMillis() / 1000)
         val endTs = merged.last().ts.takeIf { it > 0 } ?: (startTs + merged.size)
-        val duration = (endTs - startTs).coerceAtLeast(1L)
 
         return MergedResult(
             points = merged,
@@ -159,8 +222,8 @@ object TrackMerger {
             sportName = sportName(sport),
             startTime = startTs,
             endTime = endTs,
-            totalDurationSec = duration,
-            totalDistanceKm = distanceKm,
+            totalDurationSec = totalDuration,
+            totalDistanceKm = totalDistanceM / 1000.0,
             ascentM = ascent,
             descentM = descent,
             avgHr = if (hrCount > 0) (hrSum / hrCount).toInt() else 0,
@@ -168,7 +231,9 @@ object TrackMerger {
             avgCad = if (cadCount > 0) (cadSum / cadCount).toInt() else 0,
             avgPower = if (powerCount > 0) (powerSum / powerCount).toInt() else 0,
             segmentCount = sorted.size,
-            pointCount = merged.size
+            pointCount = merged.size,
+            laps = laps,
+            fromSourceMeta = srcMode
         )
     }
 

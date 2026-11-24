@@ -411,6 +411,56 @@ class PrefsManager(context: Context) {
         else -> false
     }
 
+    // ===== v9.7.0: 自动重登判定与失败冷却（对齐开发版 v9.6.7）=====
+    // 背景：启动检测原先用 isLoggedIn 做门槛，token 已过期但账号密码（或 refresh token）还在的平台
+    //       会被直接跳过，永远等不到自动重登；改为"已登录 或 可重登"。
+    // 配套冷却：重登失败后 30 分钟内不再尝试，避免无网/平台不可达时每次启动都反复请求、反复失败。
+
+    /** 重登失败冷却窗口：30 分钟 */
+    private val RELOGIN_COOLDOWN_MS = 30L * 60L * 1000L
+
+    private fun reloginFailKey(ds: DataSource) = "relogin_fail_${ds.shortName}"
+
+    fun markReloginFail(ds: DataSource) {
+        prefs.edit().putLong(reloginFailKey(ds), System.currentTimeMillis()).apply()
+    }
+
+    fun clearReloginFail(ds: DataSource) {
+        prefs.edit().remove(reloginFailKey(ds)).apply()
+    }
+
+    fun isReloginCoolingDown(ds: DataSource): Boolean {
+        val t = prefs.getLong(reloginFailKey(ds), 0L)
+        return t > 0L && System.currentTimeMillis() - t < RELOGIN_COOLDOWN_MS
+    }
+
+    /**
+     * 已登录，或者凭证虽已过期、但凭本地留存的账号密码 / refresh token 仍能自动重登。
+     * 冷却期内一律返回 false（本次跳过检测，不再发请求）。
+     */
+    fun isLoggedInOrReloginable(ds: DataSource): Boolean {
+        if (isReloginCoolingDown(ds)) return false
+        if (isLoggedIn(ds)) {
+            clearReloginFail(ds)
+            return true
+        }
+        // 记住账号密码、可无感重登的 4 个平台
+        val hasAccountPwd = when (ds) {
+            DataSource.KEEP -> !getKeepAccount().isNullOrBlank() && !getKeepPassword().isNullOrBlank()
+            DataSource.MYWHOOSH -> !getMywhooshAccount().isNullOrBlank() && !getMywhooshPassword().isNullOrBlank()
+            DataSource.ZEPP -> !getZeppAccount().isNullOrBlank() && !getZeppPassword().isNullOrBlank()
+            DataSource.KOMOT -> !getKomootAccount().isNullOrBlank() && !getKomootPassword().isNullOrBlank()
+            else -> false
+        }
+        if (hasAccountPwd) return true
+        // 有 refresh token、可静默续期的平台
+        return when (ds) {
+            DataSource.MAGENE -> !getMageneRefreshToken().isNullOrEmpty()
+            DataSource.WAHOO -> !getWahooRefresh().isNullOrEmpty()
+            else -> false
+        }
+    }
+
     // ===== 用户名存储 =====
     fun saveUsername(ds: DataSource, name: String) {
         prefs.edit().putString("username_${ds.shortName}", name).apply()

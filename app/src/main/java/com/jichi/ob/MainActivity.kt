@@ -68,6 +68,7 @@ import com.jichi.ob.ui.LoginWebActivity
 import com.jichi.ob.util.PrefsManager
 import com.jichi.ob.util.FileNameGenerator
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -1397,10 +1398,17 @@ class MainActivity : AppCompatActivity() {
     /** v8.4.0: 失效平台集合（登录页红标显示，checkAllLogins 填充） */
     internal val lastInvalidPlatforms = mutableSetOf<DataSource>()
 
+    /** v9.7.0: 启动登录检测的协程异常兜底（对齐开发版 v9.6.8 的 safeHandler）——
+     *  平台失效 / 无网 / 不可达时，任何穿透到协程机制层的异常只记日志、不重抛，
+     *  避免未捕获异常走 UnhandledExceptionHandler 杀进程，形成"启动即闪退"的循环。 */
+    private val loginCheckGuard = CoroutineExceptionHandler { _, e ->
+        Log.e(TAG, "启动登录检测协程异常（已兜底）: ${e.message}", e)
+    }
+
     internal fun checkAllLogins(onDone: ((valid: Int, refreshed: Int, invalid: Int) -> Unit)? = null) {
         appendLog("🔍 启动登录检测中...")
         lastInvalidPlatforms.clear()
-        lifecycleScope.launch(Dispatchers.IO) {
+        lifecycleScope.launch(Dispatchers.IO + loginCheckGuard) {
             var valid = 0
             var refreshed = 0
             var invalid = 0
@@ -1412,7 +1420,9 @@ class MainActivity : AppCompatActivity() {
                 DataSource.GIANT, DataSource.TWO_BULU, DataSource.JOYRUN
             )
             for (ds in platforms) {
-                if (!prefs.isLoggedIn(ds)) continue  // 未登录过的跳过，不发无用请求
+                // v9.7.0: 门槛由"已登录"改为"已登录或可自动重登"——token 已过期但账号密码 /
+                //         refresh token 还在的平台也要进检测，才有机会无感恢复；冷却期内的平台直接跳过。
+                if (!prefs.isLoggedInOrReloginable(ds)) continue
                 kotlinx.coroutines.delay(300)  // 间隔避免并发触发风控
                 val cred = prefs.getCredential(ds) ?: continue
                 val username = try {
@@ -1476,9 +1486,19 @@ class MainActivity : AppCompatActivity() {
                     continue
                 }
                 // 登录态失效 → 尝试刷新
-                val newCred = refreshCredentialOnStart(ds, cred)
+                // v9.7.0: 刷新要发网络请求（无网 / 平台不可达时会抛异常），此处兜住，
+                //         避免异常穿透整个检测协程导致启动闪退。
+                val newCred = try {
+                    refreshCredentialOnStart(ds, cred)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    Log.w(TAG, "启动检测 ${ds.displayName} 自动重登异常: ${e.message}")
+                    null
+                }
                 if (newCred != null && newCred != cred) {
                     refreshed++
+                    prefs.clearReloginFail(ds)  // v9.7.0: 重登成功，解除冷却
                     prefs.saveCredential(ds, newCred)
                     // v7.6.1: 刷新后校验新token是否真实可用，输出明确成功/失败日志
                     // v7.6.8: 迈金刷新成功即保存新token；校验失败不再提示"同步失败请重新登录"（新token已保存，
@@ -1497,6 +1517,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     invalid++
                     lastInvalidPlatforms.add(ds)
+                    prefs.markReloginFail(ds)  // v9.7.0: 本次重登失败，30 分钟内不再尝试，防无网反复重试
                     if (ds == DataSource.WAHOO || ds == DataSource.COROS_CN || ds == DataSource.COROS_INT
                         || ds == DataSource.GARMIN_COM || ds == DataSource.GARMIN_CN) {
                         // v7.6.8: Wahoo/高驰失效时【绝不】清除凭证！

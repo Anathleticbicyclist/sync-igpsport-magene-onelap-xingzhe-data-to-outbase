@@ -18,11 +18,13 @@ android {
         applicationId "com.jichi.ob"
         minSdk 26
         targetSdk 36
-        versionCode 966
-        versionName "9.6.6"
-        // Wahoo开发者凭证从local.properties读取（不硬编码到源码）
-        buildConfigField "String", "WAHOO_CLIENT_ID", "\"${keystoreProperties['wahoo_client_id'] ?: ""}\""
-        buildConfigField "String", "WAHOO_CLIENT_SECRET", "\"${keystoreProperties['wahoo_client_secret'] ?: ""}\""
+        versionCode 970
+        versionName "9.7.0"
+        // Wahoo 开发者凭证只从 local.properties 读取（该文件不入库）。
+        // 仓库内默认值为占位符，避免真实 client_id/secret 泄露导致调用额度被他人消耗。
+        // 自行编译时，在 local.properties 里填 wahoo_client_id / wahoo_client_secret 即可覆盖。
+        buildConfigField "String", "WAHOO_CLIENT_ID", "\"${keystoreProperties['wahoo_client_id'] ?: "YOUR_WAHOO_CLIENT_ID"}\""
+        buildConfigField "String", "WAHOO_CLIENT_SECRET", "\"${keystoreProperties['wahoo_client_secret'] ?: "YOUR_WAHOO_CLIENT_SECRET"}\""
         // v8.4.4: iGPSPORT 短信验证码登录（对齐开发版）
         buildConfigField "boolean", "IGP_NATIVE_LOGIN", "true"
     }

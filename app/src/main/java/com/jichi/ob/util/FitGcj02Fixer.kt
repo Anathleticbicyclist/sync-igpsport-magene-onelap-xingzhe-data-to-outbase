@@ -19,31 +19,39 @@ object FitGcj02Fixer {
     /** 修复 FIT 文件坐标；返回修复后的字节数组；非 FIT/无需修复/出错时返回 null（调用方保留原文件） */
     fun fix(inputData: ByteArray): ByteArray? {
         return try {
-            var data = inputData.copyOf()
-            if (data.size < 14) return null
-            val headerSize = data[0].toInt() and 0xFF
+            if (inputData.size < 14) return null
+            val headerSize = inputData[0].toInt() and 0xFF
             if (headerSize != 12 && headerSize != 14) return null
-            val signature = String(byteArrayOf(data[8], data[9], data[10], data[11]), Charsets.US_ASCII)
+            val signature = String(byteArrayOf(inputData[8], inputData[9], inputData[10], inputData[11]), Charsets.US_ASCII)
             if (signature != ".FIT") return null
 
-            val dataSize = (data[4].toInt() and 0xFF) or ((data[5].toInt() and 0xFF) shl 8) or
-                ((data[6].toInt() and 0xFF) shl 16) or ((data[7].toInt() and 0xFF) shl 24)
-            val expectedSize = headerSize + dataSize + 2
-            if (expectedSize < data.size) data = data.copyOfRange(0, expectedSize)
+            val dataSize = (inputData[4].toInt() and 0xFF) or ((inputData[5].toInt() and 0xFF) shl 8) or
+                ((inputData[6].toInt() and 0xFF) shl 16) or ((inputData[7].toInt() and 0xFF) shl 24)
+            if (dataSize <= 0 || headerSize > inputData.size) return null
+
+            // v9.7.0 兼容性增强：
+            //  1) 头部声明长度 < 实际长度 → 按声明截断（多余尾巴不影响）；
+            //  2) 头部声明长度 > 实际长度（下载被截断的 FIT，平台偶发）→ 不再直接判失败，
+            //     按实际可用长度尽力解析，尾部 CRC 缺失时补写，避免整份文件白修；
+            //  3) 解析越界/缺定义时立即停止而不是盲跳字节，防止错位把后面的数据改坏。
+            val declaredEnd = headerSize + dataSize
+            val hasCrc = inputData.size >= declaredEnd + 2
+            val data = if (declaredEnd + 2 <= inputData.size) inputData.copyOfRange(0, declaredEnd + 2) else inputData.copyOf()
+            val bodyEnd = minOf(declaredEnd, data.size)
 
             val definitions = HashMap<Int, Definition>()
             var offset = headerSize
-            val dataEnd = headerSize + dataSize
             var changed = false
 
-            while (offset < dataEnd) {
+            while (offset < bodyEnd) {
                 val recordHeader = data[offset].toInt() and 0xFF
                 offset += 1
 
                 if (recordHeader and 0x80 != 0) {
                     // Compressed timestamp header
                     val localMessageType = (recordHeader shr 5) and 0x03
-                    val definition = definitions[localMessageType] ?: run { offset += 3; continue }
+                    val definition = definitions[localMessageType] ?: break
+                    if (offset + definition.size + 1 > bodyEnd) break
                     if (patchRecord(data, offset, definition)) changed = true
                     offset += definition.size + 1 // +1 for time offset byte
                 } else {
@@ -52,11 +60,12 @@ object FitGcj02Fixer {
                     val hasDeveloperData = recordHeader and 0x20 != 0
 
                     if (isDefinition) {
-                        val parsed = parseDefinition(data, offset, hasDeveloperData)
+                        val parsed = parseDefinition(data, offset, hasDeveloperData) ?: break
                         definitions[localMessageType] = parsed.first
                         offset = parsed.second
                     } else {
-                        val definition = definitions[localMessageType] ?: continue
+                        val definition = definitions[localMessageType] ?: break
+                        if (offset + definition.size > bodyEnd) break
                         if (patchRecord(data, offset, definition)) changed = true
                         offset += definition.size
                     }
@@ -66,10 +75,16 @@ object FitGcj02Fixer {
             if (!changed) return inputData
 
             // 重算 CRC-16/ARC
-            val newCRC = fitCRC(data.copyOfRange(0, data.size - 2))
-            data[data.size - 2] = (newCRC and 0xFF).toByte()
-            data[data.size - 1] = ((newCRC shr 8) and 0xFF).toByte()
-            data
+            if (hasCrc) {
+                val newCRC = fitCRC(data.copyOfRange(0, data.size - 2))
+                data[data.size - 2] = (newCRC and 0xFF).toByte()
+                data[data.size - 1] = ((newCRC shr 8) and 0xFF).toByte()
+                data
+            } else {
+                // 截断文件：缺尾部 CRC，补两条
+                val newCRC = fitCRC(data)
+                data + byteArrayOf((newCRC and 0xFF).toByte(), ((newCRC shr 8) and 0xFF).toByte())
+            }
         } catch (e: Exception) {
             null
         }
@@ -188,7 +203,9 @@ object FitGcj02Fixer {
         return currentLat to currentLon
     }
 
-    private fun parseDefinition(data: ByteArray, startOffset: Int, hasDeveloperData: Boolean): Pair<Definition, Int> {
+    private fun parseDefinition(data: ByteArray, startOffset: Int, hasDeveloperData: Boolean): Pair<Definition, Int>? {
+        // v9.7.0: 全部读取前做越界判断，越界返回 null（调用方立即停止解析），不再靠异常兜底
+        if (startOffset + 5 > data.size) return null
         var offset = startOffset + 1 // 跳过 Reserved
         val architecture = data[offset].toInt() and 0xFF
         offset += 1
@@ -196,6 +213,7 @@ object FitGcj02Fixer {
         offset += 2 // global message number
         val fieldCount = data[offset].toInt() and 0xFF
         offset += 1
+        if (offset + fieldCount * 3 > data.size) return null
         val fields = mutableListOf<FieldDef>()
         var messageOffset = 0
         for (i in 0 until fieldCount) {
@@ -207,9 +225,11 @@ object FitGcj02Fixer {
             messageOffset += size
         }
         if (hasDeveloperData) {
+            if (offset + 1 > data.size) return null
             val devFieldCount = data[offset].toInt() and 0xFF
             offset += 1
-            for (i in 0 until devFieldCount) offset += 3
+            if (offset + devFieldCount * 3 > data.size) return null
+            offset += devFieldCount * 3
         }
         return Definition(littleEndian, fields, messageOffset) to offset
     }
@@ -220,6 +240,9 @@ object FitGcj02Fixer {
         val latField = fieldsByNumber[0] ?: return false
         val lonField = fieldsByNumber[1] ?: return false
         if (latField.size != 4 || lonField.size != 4) return false
+        // v9.7.0: 读写前越界保护（截断文件走到尾部时不再越界读）
+        if (dataOffset + latField.offset + 4 > data.size) return false
+        if (dataOffset + lonField.offset + 4 > data.size) return false
 
         val latRaw = readI32(data, dataOffset + latField.offset, definition.littleEndian)
         val lonRaw = readI32(data, dataOffset + lonField.offset, definition.littleEndian)

@@ -40,7 +40,11 @@ class WahooApi {
         // Wahoo凭证从BuildConfig读取（来自local.properties，不硬编码到源码）
         val BUILTIN_CLIENT_ID = BuildConfig.WAHOO_CLIENT_ID
         val BUILTIN_CLIENT_SECRET = BuildConfig.WAHOO_CLIENT_SECRET
-        fun isBuiltinConfigured(): Boolean = BUILTIN_CLIENT_ID.isNotEmpty() && BUILTIN_CLIENT_SECRET.isNotEmpty()
+        // v9.7.0: 仓库内默认值为占位符（YOUR_WAHOO_CLIENT_ID / YOUR_WAHOO_CLIENT_SECRET），
+        // 占位符不算"已配置"，避免用假凭证去请求、白白消耗额度。
+        fun isBuiltinConfigured(): Boolean =
+            BUILTIN_CLIENT_ID.isNotEmpty() && BUILTIN_CLIENT_SECRET.isNotEmpty() &&
+                !BUILTIN_CLIENT_ID.startsWith("YOUR_") && !BUILTIN_CLIENT_SECRET.startsWith("YOUR_")
     }
 
     private val client = OkHttpClient.Builder()

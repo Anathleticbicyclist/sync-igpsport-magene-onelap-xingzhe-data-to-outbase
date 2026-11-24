@@ -252,6 +252,35 @@ object GpxToFitConverter {
         return buildFitFile(body)
     }
 
+    /** v9.7.0: 合并写出用的单圈数据（距离 / 计时直接来自源段 session 原值） */
+    data class FitLap(
+        val startTs: Long,
+        val endTs: Long,
+        val distanceM: Double,
+        val timerSec: Long
+    )
+
+    /**
+     * v9.7.0（对齐开发版 v9.6.9 的 MergeFitWriter 口径）：
+     * 合并结果写出 FIT——session 距离/计时取各段 session 原值累加，lap 按段（多日合并即按天）逐圈写出，
+     * record 的 distance 在每圈首点重置累计，避免段间"跳飞"距离虚增总里程。
+     */
+    fun convertPointsWithLaps(
+        pts: List<TrackPoint>,
+        sport: Int = 2,
+        laps: List<FitLap>,
+        totalDistanceM: Double,
+        totalTimerSec: Long
+    ): ByteArray {
+        require(pts.isNotEmpty()) { "无有效轨迹点" }
+        val startUnix = pts.firstOrNull { it.ts > 0L }?.ts ?: (System.currentTimeMillis() / 1000)
+        val body = buildFitBody(
+            pts, startUnix, sport, 0, 0.0, 0L,
+            laps = laps, srcDistM = totalDistanceM, srcTimerS = totalTimerSec
+        )
+        return buildFitFile(body)
+    }
+
     /** v7.9.7: 公开 GPX 解析入口（轨迹合并复用；私有 parseGpx 仅供内部单条转换） */
     fun parseGpxBytes(gpx: ByteArray): List<TrackPoint> = parseGpx(String(gpx, Charsets.UTF_8))
 
@@ -279,7 +308,7 @@ object GpxToFitConverter {
         return out.toByteArray()
     }
 
-    private fun buildFitBody(pts: List<TrackPoint>, startUnix: Long, sport: Int = 2, subSport: Int = 0, metaDist: Double = 0.0, metaDur: Long = 0L): ByteArray {
+    private fun buildFitBody(pts: List<TrackPoint>, startUnix: Long, sport: Int = 2, subSport: Int = 0, metaDist: Double = 0.0, metaDur: Long = 0L, laps: List<FitLap> = emptyList(), srcDistM: Double = 0.0, srcTimerS: Long = 0L): ByteArray {
         val out = ByteArrayOutputStream()
         // v6.2.7: 若无有效时间戳(行者等GPX time格式不兼容/缺失)，生成递增时间戳避免FIT时间异常被黑鸟拒
         val hasTime = pts[0].ts > 0 && pts.last().ts > 0
@@ -349,6 +378,13 @@ object GpxToFitConverter {
             else -> 0
         }
 
+        // v9.7.0: 合并原值口径——有源段 session 原值时，session 的距离 / 计时 / 圈数取原值，点列值仅兜底
+        val useLaps = laps.isNotEmpty()
+        val durFinal = if (useLaps && srcTimerS > 0) srcTimerS else durationS
+        val distFinalM = if (useLaps && srcDistM > 0) srcDistM else distM
+        val lapCount = if (useLaps) laps.size else 1
+        val avgSpeedFinal = if (durFinal > 0) distFinalM / durFinal else 0.0
+
         // --- session (local 3)：补齐 心率/踏频/功率/卡路里/增强速度 汇总，平台详情页才能解析出这些数据 ---
         // Garmin SDK 21.176 SessionMesg 权威字段号（此前误用 LapMesg 字段号导致平台读不到）：
         // 253 timestamp,2 start_time,3/4 start pos,5 sport,6 sub_sport,7 elapsed,8 timer,9 distance,
@@ -367,21 +403,21 @@ object GpxToFitConverter {
             u32(o, fit0 - FIT_EPOCH_OFFSET)        // 2 start_time
             u32(o, degToSemicircle(pts[0].lat).toLong()); u32(o, degToSemicircle(pts[0].lon).toLong()) // 3/4
             u8(o, sport); u8(o, subSport)            // 5 sport / 6 sub_sport
-            u32(o, durationS * 1000); u32(o, durationS * 1000) // 7/8
-            u32(o, (distM * 100).toLong())         // 9 total_distance (100cm)
+            u32(o, durFinal * 1000); u32(o, durFinal * 1000) // 7/8（原值口径用各段 session 计时合计）
+            u32(o, (distFinalM * 100).toLong())    // 9 total_distance (100cm，原值口径用各段里程合计)
             u16(o, calories.coerceIn(0, 65535))    // 11 total_calories
-            u16(o, (avgSpeed * 1000).toInt())      // 14 avg_speed (m/s*1000)
+            u16(o, (avgSpeedFinal * 1000).toInt()) // 14 avg_speed (m/s*1000)
             u16(o, (maxSpeedMs * 1000).toInt())    // 15 max_speed
             u8(o, avgHr); u8(o, maxHr)             // 16 avg_hr / 17 max_hr
             u8(o, avgCad); u8(o, maxCad)           // 18 avg_cad / 19 max_cad
             u16(o, avgPow); u16(o, maxPow)         // 20 avg_power / 21 max_power
             u16(o, ascent.toInt()); u16(o, descent.toInt()) // 22/23
-            u8(o, 1); u8(o, 0)                     // 26 num_laps / 33 num_lengths
-            u16(o, (avgSpeed * 1000).toInt())      // 124 enhanced_avg_speed
+            u8(o, lapCount.coerceIn(0, 255)); u8(o, 0) // 26 num_laps（按段/按天分圈）/ 33 num_lengths
+            u16(o, (avgSpeedFinal * 1000).toInt()) // 124 enhanced_avg_speed
             u16(o, (maxSpeedMs * 1000).toInt())    // 125 enhanced_max_speed
         }.toByteArray())
 
-        // --- lap (local 4)：同样补齐关键汇总（avg_speed/max_speed/hr/power） ---
+        // --- lap (local 4)：v9.7.0 支持多圈——按段（多日合并即按天）逐圈写出，距离与计时直填源段原值 ---
         // Garmin SDK 21.176 LapMesg 权威字段号：
         // 253 timestamp,2 start_time,3/4 start pos,7 elapsed,8 timer,9 distance,11 calories,
         // 13 avg_speed,14 max_speed,15 avg_hr,16 max_hr,17 avg_cad,18 max_cad,
@@ -392,24 +428,49 @@ object GpxToFitConverter {
             .f(13, 2, 0x84).f(14, 2, 0x84).f(15, 1, 0x02).f(16, 1, 0x02)
             .f(17, 1, 0x02).f(18, 1, 0x02).f(19, 2, 0x84).f(20, 2, 0x84)
             .f(21, 2, 0x84).f(22, 2, 0x84).f(32, 1, 0x02).f(110, 2, 0x84).f(111, 2, 0x84).build())
-        out.write(ByteArrayOutputStream().also { o ->
-            u8(o, 0x04)
-            u32(o, fitLast - FIT_EPOCH_OFFSET)     // 253
-            u32(o, fit0 - FIT_EPOCH_OFFSET)        // 2
-            u32(o, degToSemicircle(pts[0].lat).toLong()); u32(o, degToSemicircle(pts[0].lon).toLong()) // 3/4
-            u32(o, durationS * 1000); u32(o, durationS * 1000) // 7/8
-            u32(o, (distM * 100).toLong())         // 9
-            u16(o, calories.coerceIn(0, 65535))    // 11
-            u16(o, (avgSpeed * 1000).toInt())      // 13 avg_speed
-            u16(o, (maxSpeedMs * 1000).toInt())    // 14 max_speed
-            u8(o, avgHr); u8(o, maxHr)             // 15/16
-            u8(o, avgCad); u8(o, maxCad)           // 17/18
-            u16(o, avgPow); u16(o, maxPow)         // 19/20
-            u16(o, ascent.toInt()); u16(o, descent.toInt()) // 21/22
-            u8(o, 1)                               // 32 num_lengths
-            u16(o, (avgSpeed * 1000).toInt())      // 110 enhanced_avg_speed
-            u16(o, (maxSpeedMs * 1000).toInt())    // 111 enhanced_max_speed
-        }.toByteArray())
+        if (useLaps) {
+            for (lap in laps) {
+                val lapDur = lap.timerSec.coerceAtLeast(1L)
+                val lapAvgSpeed = lap.distanceM / lapDur
+                out.write(ByteArrayOutputStream().also { o ->
+                    u8(o, 0x04)
+                    u32(o, (lap.endTs.takeIf { it > 0 } ?: fitLast) - FIT_EPOCH_OFFSET)   // 253
+                    u32(o, (lap.startTs.takeIf { it > 0 } ?: fit0) - FIT_EPOCH_OFFSET)     // 2
+                    u32(o, degToSemicircle(pts[0].lat).toLong()); u32(o, degToSemicircle(pts[0].lon).toLong()) // 3/4
+                    u32(o, lapDur * 1000); u32(o, lapDur * 1000)  // 7/8 源段计时原值
+                    u32(o, (lap.distanceM * 100).toLong())        // 9 源段里程原值
+                    u16(o, 0)                                     // 11 单圈卡路里不单算
+                    u16(o, (lapAvgSpeed * 1000).toInt())          // 13
+                    u16(o, 0)                                     // 14 单圈最高速不单算
+                    u8(o, avgHr); u8(o, maxHr)                    // 15/16
+                    u8(o, avgCad); u8(o, maxCad)                  // 17/18
+                    u16(o, avgPow); u16(o, maxPow)                // 19/20
+                    u16(o, 0); u16(o, 0)                          // 21/22
+                    u8(o, 1)                                      // 32
+                    u16(o, (lapAvgSpeed * 1000).toInt())          // 110
+                    u16(o, 0)                                     // 111
+                }.toByteArray())
+            }
+        } else {
+            out.write(ByteArrayOutputStream().also { o ->
+                u8(o, 0x04)
+                u32(o, fitLast - FIT_EPOCH_OFFSET)     // 253
+                u32(o, fit0 - FIT_EPOCH_OFFSET)        // 2
+                u32(o, degToSemicircle(pts[0].lat).toLong()); u32(o, degToSemicircle(pts[0].lon).toLong()) // 3/4
+                u32(o, durFinal * 1000); u32(o, durFinal * 1000) // 7/8
+                u32(o, (distFinalM * 100).toLong())    // 9
+                u16(o, calories.coerceIn(0, 65535))    // 11
+                u16(o, (avgSpeedFinal * 1000).toInt()) // 13 avg_speed
+                u16(o, (maxSpeedMs * 1000).toInt())    // 14 max_speed
+                u8(o, avgHr); u8(o, maxHr)             // 15/16
+                u8(o, avgCad); u8(o, maxCad)           // 17/18
+                u16(o, avgPow); u16(o, maxPow)         // 19/20
+                u16(o, ascent.toInt()); u16(o, descent.toInt()) // 21/22
+                u8(o, 1)                               // 32 num_lengths
+                u16(o, (avgSpeedFinal * 1000).toInt()) // 110 enhanced_avg_speed
+                u16(o, (maxSpeedMs * 1000).toInt())    // 111 enhanced_max_speed
+            }.toByteArray())
+        }
 
         // --- activity (local 5) ---
         out.write(DefBuilder(5, 34)
@@ -418,7 +479,7 @@ object GpxToFitConverter {
         out.write(ByteArrayOutputStream().also { o ->
             u8(o, 0x05)
             u32(o, fitLast - FIT_EPOCH_OFFSET)
-            u32(o, durationS * 1000)
+            u32(o, durFinal * 1000)
             u8(o, 1); u8(o, 1); u8(o, 0); u8(o, 0)
             u32(o, fit0)
         }.toByteArray())
@@ -429,11 +490,16 @@ object GpxToFitConverter {
             .f(2, 2, 0x84).f(3, 1, 0x02).f(4, 1, 0x02)
             .f(5, 4, 0x86).f(6, 2, 0x84).f(7, 2, 0x84).build())
         val step = 1  // v6.3.14: 不再抽稀到200点，保留全部轨迹点
+        val lapStartTsSet = if (useLaps) laps.map { it.startTs }.toHashSet() else emptySet()
         var cum = 0.0
         var prev = pts[0]
         for (i in 0 until n step step) {
             val p = pts[i]
-            if (i > 0) cum += haversineM(prev.lat, prev.lon, p.lat, p.lon)
+            if (i > 0) {
+                // v9.7.0: 圈首点重置累计，跨段"跳飞"距离不计入（与 session 的源值里程口径一致）
+                if (useLaps && p.ts in lapStartTsSet) cum = 0.0
+                else cum += haversineM(prev.lat, prev.lon, p.lat, p.lon)
+            }
             prev = p
             val ts = p.ts.takeIf { it > 0 } ?: (startUnix + i) // 无time: 按索引递增每秒一点
             var spd = 0.0
